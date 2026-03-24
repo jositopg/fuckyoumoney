@@ -1,4 +1,4 @@
-import type { Asset } from '../types'
+import type { Asset, StocksMetadata, CryptoMetadata } from '../types'
 
 interface CoinGeckoResponse {
   [coinId: string]: { eur?: number }
@@ -70,9 +70,9 @@ async function fetchStockPrice(symbol: string): Promise<number | null> {
 }
 
 /**
- * Fetches updated prices for assets with symbols.
- * Convention: each asset with a symbol represents 1 unit at the current market price.
- * Returns a map of assetId -> new price in EUR.
+ * Returns map of assetId -> new total EUR value.
+ * If asset has metadata.quantity, value = quantity × newPrice.
+ * Otherwise value = newPrice (backwards compat).
  */
 export async function updateAssetPrices(assets: Asset[]): Promise<Map<string, number>> {
   const updates = new Map<string, number>()
@@ -80,37 +80,47 @@ export async function updateAssetPrices(assets: Asset[]): Promise<Map<string, nu
   const cryptoAssets = assets.filter(a => a.category === 'crypto' && a.symbol)
   const stockAssets = assets.filter(a => a.category === 'stocks' && a.symbol)
 
-  // Fetch crypto prices (deduplicated by symbol)
+  // Deduplicated fetches
   const cryptoSymbols = [...new Set(cryptoAssets.map(a => a.symbol!.toUpperCase()))]
-  const cryptoPrices = new Map<string, number>()
-
-  await Promise.allSettled(
-    cryptoSymbols.map(async sym => {
-      const price = await fetchCryptoPrice(sym)
-      if (price !== null) cryptoPrices.set(sym, price)
-    })
-  )
-
-  // Fetch stock prices (deduplicated by symbol)
   const stockSymbols = [...new Set(stockAssets.map(a => a.symbol!.toUpperCase()))]
+
+  const cryptoPrices = new Map<string, number>()
   const stockPrices = new Map<string, number>()
 
-  await Promise.allSettled(
-    stockSymbols.map(async sym => {
+  await Promise.allSettled([
+    ...cryptoSymbols.map(async sym => {
+      const price = await fetchCryptoPrice(sym)
+      if (price !== null) cryptoPrices.set(sym, price)
+    }),
+    ...stockSymbols.map(async sym => {
       const price = await fetchStockPrice(sym)
       if (price !== null) stockPrices.set(sym, price)
-    })
-  )
+    }),
+  ])
 
   for (const asset of cryptoAssets) {
     const price = cryptoPrices.get(asset.symbol!.toUpperCase())
-    if (price !== undefined) updates.set(asset.id, price)
+    if (price === undefined) continue
+    const meta = asset.metadata as CryptoMetadata | undefined
+    const quantity = meta?.quantity
+    const newValue = quantity && quantity > 0 ? quantity * price : price
+    // Also update pricePerUnit in metadata — we'll handle this in App.tsx
+    updates.set(asset.id, newValue)
   }
 
   for (const asset of stockAssets) {
     const price = stockPrices.get(asset.symbol!.toUpperCase())
-    if (price !== undefined) updates.set(asset.id, price)
+    if (price === undefined) continue
+    const meta = asset.metadata as StocksMetadata | undefined
+    const quantity = meta?.quantity
+    const newValue = quantity && quantity > 0 ? quantity * price : price
+    updates.set(asset.id, newValue)
   }
 
   return updates
+}
+
+export async function fetchPricePerUnit(category: 'crypto' | 'stocks', symbol: string): Promise<number | null> {
+  if (category === 'crypto') return fetchCryptoPrice(symbol)
+  return fetchStockPrice(symbol)
 }

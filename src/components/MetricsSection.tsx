@@ -4,7 +4,9 @@ import {
   getEmergencyFundMonths,
   getDebtRatio,
   getDiversificationWarning,
+  getTotalMonthlyDebtPayments,
   formatMonths,
+  formatEur,
 } from '../utils/calculations'
 
 interface MetricsSectionProps {
@@ -37,6 +39,7 @@ export function MetricsSection({ assets, monthlyExpenses }: MetricsSectionProps)
   const emergencyMonths = getEmergencyFundMonths(assets, monthlyExpenses)
   const debtRatio = getDebtRatio(assets)
   const warning = getDiversificationWarning(assets)
+  const monthlyDebtPayments = getTotalMonthlyDebtPayments(assets)
 
   const hasExpenses = monthlyExpenses > 0
 
@@ -87,6 +90,14 @@ export function MetricsSection({ assets, monthlyExpenses }: MetricsSectionProps)
           sub={assets.length > 0 ? debtRatioSub(debtRatio) : 'Sin activos'}
           highlight={debtRatio < 0.2}
         />
+
+        {monthlyDebtPayments > 0 && (
+          <MetricCard
+            label="Cuotas mensuales"
+            value={formatEur(monthlyDebtPayments)}
+            sub="Total comprometido en deuda"
+          />
+        )}
       </div>
 
       {warning && (

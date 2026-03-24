@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { lazy, Suspense } from 'react'
 import { Plus, Settings } from 'lucide-react'
-import type { Asset, AppData } from './types'
+import type { Asset, AppData, StocksMetadata, CryptoMetadata } from './types'
 import { CATEGORY_ORDER } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
@@ -22,7 +22,7 @@ const SettingsSheet = lazy(() =>
 const DEFAULT_DATA: AppData = {
   assets: [],
   monthlyExpenses: 0,
-  schema_version: 1,
+  schema_version: 2,
 }
 
 export default function App() {
@@ -51,10 +51,18 @@ export default function App() {
           ...prev,
           assets: prev.assets.map(a => {
             const newValue = updates.get(a.id)
-            if (newValue !== undefined) {
-              return { ...a, value: newValue, updatedAt: new Date().toISOString() }
+            if (newValue === undefined) return a
+
+            // Also update pricePerUnit in metadata
+            let updatedMetadata = a.metadata
+            if (a.category === 'stocks' || a.category === 'crypto') {
+              const meta = a.metadata as StocksMetadata | CryptoMetadata | undefined
+              const quantity = meta?.quantity
+              const newPricePerUnit = quantity && quantity > 0 ? newValue / quantity : newValue
+              updatedMetadata = { ...meta, pricePerUnit: newPricePerUnit }
             }
-            return a
+
+            return { ...a, value: newValue, metadata: updatedMetadata, updatedAt: new Date().toISOString() }
           }),
           lastPriceUpdate: new Date().toISOString(),
         }))

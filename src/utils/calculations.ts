@@ -121,6 +121,15 @@ export function getContextualMessage(months: number, netWorth: number, debtRatio
   return 'Has alcanzado lo que pocos logran: la libertad de elegir sin que el dinero mande.'
 }
 
+export function getTotalMonthlyDebtPayments(assets: Asset[]): number {
+  return assets
+    .filter(a => a.category === 'debt')
+    .reduce((sum, a) => {
+      const meta = a.metadata as { monthlyPayment?: number } | undefined
+      return sum + (meta?.monthlyPayment ?? 0)
+    }, 0)
+}
+
 export function getDiversificationWarning(assets: Asset[]): string | null {
   const totalPositive = getTotalPositiveAssets(assets)
   if (totalPositive <= 0) return null
