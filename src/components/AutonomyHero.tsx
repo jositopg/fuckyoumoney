@@ -3,10 +3,9 @@ import {
   getAutonomyMonths,
   getAutonomyLevel,
   getNetWorth,
-  getContextualMessage,
-  getDebtRatio,
   formatEur,
 } from '../utils/calculations'
+import { getDailyQuote } from '../utils/quotes'
 import { WealthChart } from './WealthChart'
 
 interface AutonomyHeroProps {
@@ -19,8 +18,7 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots }: AutonomyHer
   const netWorth = getNetWorth(assets)
   const autonomyMonths = getAutonomyMonths(assets, monthlyExpenses)
   const level = getAutonomyLevel(autonomyMonths)
-  const debtRatio = getDebtRatio(assets)
-  const contextMessage = getContextualMessage(autonomyMonths, netWorth, debtRatio)
+  const quote = getDailyQuote()
 
   const hasExpenses = monthlyExpenses > 0
   const hasAssets = assets.length > 0
@@ -106,10 +104,10 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots }: AutonomyHer
         </div>
       )}
 
-      {/* Contextual message */}
+      {/* Daily quote */}
       <div className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
         <p className="text-body text-on-surface/70 font-body leading-relaxed italic">
-          "{contextMessage}"
+          "{quote.text}"
         </p>
       </div>
 
