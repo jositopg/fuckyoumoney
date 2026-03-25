@@ -84,6 +84,7 @@ export interface AppData {
   lastPriceUpdate?: string
   snapshots?: WealthSnapshot[]
   lastExportReminder?: string // ISO date — last time we showed the export reminder
+  hasSeenOnboarding?: boolean
   schema_version: number
 }
 

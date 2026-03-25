@@ -189,6 +189,64 @@ export function SettingsSheet({
           )}
         </div>
       </div>
+
+      {/* Privacy section */}
+      <div className="mt-8 pt-6 border-t border-outline-variant/30 pb-2">
+        <p className="text-label font-semibold text-on-surface/60 font-body uppercase tracking-wide mb-4">
+          Privacidad
+        </p>
+
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <span aria-hidden="true" className="text-base mt-0.5">🔒</span>
+            <p className="text-label text-on-surface/70 font-body leading-relaxed">
+              <span className="font-semibold text-on-surface">Ningún dato sale de este dispositivo.</span>{' '}
+              No hay servidor, no hay base de datos, no hay cuenta. Esta app no sabe quién eres.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <span aria-hidden="true" className="text-base mt-0.5">📡</span>
+            <p className="text-label text-on-surface/70 font-body leading-relaxed">
+              <span className="font-semibold text-on-surface">Sin rastreo ni analítica.</span>{' '}
+              No hay cookies de seguimiento ni herramientas de terceros que observen tu actividad.
+              Las únicas llamadas externas son las de precios de mercado (CoinGecko, Yahoo Finance).
+            </p>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <span aria-hidden="true" className="text-base mt-0.5">💾</span>
+            <div>
+              <p className="text-label text-on-surface/70 font-body leading-relaxed">
+                <span className="font-semibold text-on-surface">Cómo persisten tus datos.</span>{' '}
+                Todo se guarda en el <span className="font-mono text-label-sm bg-surface-container-highest px-1 rounded">localStorage</span> de este navegador.
+              </p>
+              <ul className="mt-2 space-y-1.5 ml-1">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5 text-xs">✓</span>
+                  <span className="text-label-sm text-on-surface/60 font-body">Los datos sobreviven al cerrar el navegador o la app</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary mt-0.5 text-xs">✓</span>
+                  <span className="text-label-sm text-on-surface/60 font-body">
+                    {persistenceStatus === 'granted'
+                      ? 'Almacenamiento persistente activo — el navegador no los borrará automáticamente'
+                      : 'Exporta regularmente para evitar pérdida de datos si el navegador libera espacio'}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-error mt-0.5 text-xs">✗</span>
+                  <span className="text-label-sm text-on-surface/60 font-body">Si borras los datos del sitio desde el navegador, se pierden</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-error mt-0.5 text-xs">✗</span>
+                  <span className="text-label-sm text-on-surface/60 font-body">Los datos no se sincronizan entre dispositivos distintos</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
     </BottomSheet>
   )
 }

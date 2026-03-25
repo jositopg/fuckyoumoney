@@ -1,6 +1,6 @@
 import type { AppData } from '../types'
 
-const CURRENT_VERSION = 2
+const CURRENT_VERSION = 3
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function migrateData(raw: any): AppData {
@@ -22,6 +22,12 @@ export function migrateData(raw: any): AppData {
   // v1 → v2: metadata field added (no structural changes needed, just bump version)
   if (raw.schema_version === 1) {
     raw = { ...raw, schema_version: 2 }
+  }
+
+  // v2 → v3: add hasSeenOnboarding — existing users with data skip onboarding
+  if (raw.schema_version === 2) {
+    const hasData = Array.isArray(raw.assets) && raw.assets.length > 0
+    raw = { ...raw, hasSeenOnboarding: hasData, schema_version: 3 }
   }
 
   return raw as AppData

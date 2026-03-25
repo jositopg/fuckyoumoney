@@ -11,6 +11,7 @@ import { CategorySection } from './components/CategorySection'
 import { MetricsSection } from './components/MetricsSection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
+import { OnboardingScreen } from './components/OnboardingScreen'
 import { updateAssetPrices } from './utils/priceUpdater'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
@@ -25,7 +26,8 @@ const SettingsSheet = lazy(() =>
 const DEFAULT_DATA: AppData = {
   assets: [],
   monthlyExpenses: 0,
-  schema_version: 2,
+  hasSeenOnboarding: false,
+  schema_version: 3,
 }
 
 export default function App() {
@@ -152,6 +154,14 @@ export default function App() {
   function dismissExportReminder() {
     setShowExportReminder(false)
     setData(prev => ({ ...prev, lastExportReminder: new Date().toISOString() }))
+  }
+
+  function handleOnboardingDone() {
+    setData(prev => ({ ...prev, hasSeenOnboarding: true }))
+  }
+
+  if (!data.hasSeenOnboarding) {
+    return <OnboardingScreen onStart={handleOnboardingDone} />
   }
 
   function openEdit(asset: Asset) {
