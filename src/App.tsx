@@ -5,14 +5,17 @@ import type { Asset, AppData, StocksMetadata, CryptoMetadata } from './types'
 import { CATEGORY_ORDER } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
+import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { AutonomyHero } from './components/AutonomyHero'
 import { CategorySection } from './components/CategorySection'
 import { MetricsSection } from './components/MetricsSection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
+import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { updateAssetPrices } from './utils/priceUpdater'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
+import { exportData } from './utils/dataPortability'
 
 const AssetForm = lazy(() => import('./components/AssetForm').then(m => ({ default: m.AssetForm })))
 const SettingsSheet = lazy(() =>
@@ -30,8 +33,10 @@ export default function App() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
+  const [showExportReminder, setShowExportReminder] = useState(false)
   const isOnline = useOnlineStatus()
   const [isUpdating, setIsUpdating] = useState(false)
+  const persistenceStatus = usePersistentStorage()
 
   // Auto price update on mount
   const runPriceUpdate = useCallback(
@@ -79,6 +84,12 @@ export default function App() {
     runPriceUpdate(data.assets)
     // Take monthly snapshot on mount
     setData(prev => takeSnapshot(prev))
+    // Show export reminder if: has data, storage not persistent, and 30+ days since last reminder
+    if (data.assets.length > 0 && persistenceStatus !== 'granted') {
+      const last = data.lastExportReminder ? new Date(data.lastExportReminder) : null
+      const daysSinceLast = last ? (Date.now() - last.getTime()) / (1000 * 60 * 60 * 24) : Infinity
+      if (daysSinceLast >= 30) setShowExportReminder(true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only on mount
 
@@ -133,6 +144,16 @@ export default function App() {
     setData(prev => ({ ...prev, monthlyExpenses: expenses }))
   }
 
+  function handleExportReminder() {
+    exportData(data)
+    dismissExportReminder()
+  }
+
+  function dismissExportReminder() {
+    setShowExportReminder(false)
+    setData(prev => ({ ...prev, lastExportReminder: new Date().toISOString() }))
+  }
+
   function openEdit(asset: Asset) {
     setEditAsset(asset)
   }
@@ -174,6 +195,14 @@ export default function App() {
             lastUpdate={data.lastPriceUpdate}
             isOnline={isOnline}
             isUpdating={isUpdating}
+          />
+        )}
+
+        {/* Export reminder */}
+        {showExportReminder && (
+          <ExportReminderBanner
+            onExport={handleExportReminder}
+            onDismiss={dismissExportReminder}
           />
         )}
 

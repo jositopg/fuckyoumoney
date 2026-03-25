@@ -3,6 +3,7 @@ import { BottomSheet } from './BottomSheet'
 import { formatEur } from '../utils/calculations'
 import { exportData, importData } from '../utils/dataPortability'
 import { migrateData } from '../utils/migrations'
+import { usePersistentStorage } from '../hooks/usePersistentStorage'
 import type { AppData } from '../types'
 
 interface SettingsSheetProps {
@@ -26,6 +27,7 @@ export function SettingsSheet({
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [importError, setImportError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const persistenceStatus = usePersistentStorage()
 
   useEffect(() => {
     if (isOpen) {
@@ -123,6 +125,29 @@ export function SettingsSheet({
         <p className="text-label font-semibold text-on-surface/60 font-body uppercase tracking-wide mb-4">
           Datos
         </p>
+
+        {/* Storage persistence status */}
+        <div className="mb-4 flex items-center gap-3 bg-surface-container-low rounded-xl px-4 py-3">
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            persistenceStatus === 'granted' ? 'bg-primary' :
+            persistenceStatus === 'denied' ? 'bg-error' :
+            'bg-outline-variant'
+          }`} />
+          <div>
+            <p className="text-label font-medium text-on-surface/80 font-body">
+              {persistenceStatus === 'granted' && 'Datos protegidos'}
+              {persistenceStatus === 'denied' && 'Datos sin protección extra'}
+              {persistenceStatus === 'unsupported' && 'Almacenamiento estándar'}
+              {persistenceStatus === 'unknown' && 'Comprobando...'}
+            </p>
+            <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
+              {persistenceStatus === 'granted' && 'El navegador no borrará tus datos automáticamente'}
+              {persistenceStatus === 'denied' && 'Exporta regularmente como copia de seguridad'}
+              {persistenceStatus === 'unsupported' && 'Exporta regularmente como copia de seguridad'}
+              {persistenceStatus === 'unknown' && 'Solicitando permiso de almacenamiento persistente'}
+            </p>
+          </div>
+        </div>
 
         <div className="space-y-3">
           <button
