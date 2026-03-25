@@ -51,25 +51,36 @@ export default function App() {
 
       setIsUpdating(true)
       try {
-        const updates = await updateAssetPrices(assets)
-        if (updates.size === 0) return
+        const { values, resolvedTickers } = await updateAssetPrices(assets)
+        if (values.size === 0 && resolvedTickers.size === 0) return
 
         setData(prev => ({
           ...prev,
           assets: prev.assets.map(a => {
-            const newValue = updates.get(a.id)
-            if (newValue === undefined) return a
+            const newValue = values.get(a.id)
+            const newResolvedTicker = resolvedTickers.get(a.id)
+            if (newValue === undefined && !newResolvedTicker) return a
 
-            // Also update pricePerUnit in metadata
             let updatedMetadata = a.metadata
             if (a.category === 'stocks' || a.category === 'crypto') {
               const meta = a.metadata as StocksMetadata | CryptoMetadata | undefined
               const quantity = meta?.quantity
-              const newPricePerUnit = quantity && quantity > 0 ? newValue / quantity : newValue
-              updatedMetadata = { ...meta, pricePerUnit: newPricePerUnit }
+              const newPricePerUnit = quantity && quantity > 0 && newValue !== undefined
+                ? newValue / quantity
+                : undefined
+              updatedMetadata = {
+                ...meta,
+                ...(newPricePerUnit !== undefined && { pricePerUnit: newPricePerUnit }),
+                ...(newResolvedTicker && { resolvedTicker: newResolvedTicker }),
+              }
             }
 
-            return { ...a, value: newValue, metadata: updatedMetadata, updatedAt: new Date().toISOString() }
+            return {
+              ...a,
+              ...(newValue !== undefined && { value: newValue }),
+              metadata: updatedMetadata,
+              updatedAt: new Date().toISOString(),
+            }
           }),
           lastPriceUpdate: new Date().toISOString(),
         }))

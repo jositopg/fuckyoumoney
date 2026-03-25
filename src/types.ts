@@ -15,6 +15,9 @@ export interface CashMetadata {
 
 export interface StocksMetadata {
   assetType?: 'accion' | 'etf' | 'fondo_indexado' | 'fondo_activo' | 'otro'
+  identifierType?: 'ticker' | 'isin'   // how the user identified this asset
+  resolvedTicker?: string              // ticker cached after ISIN resolution (avoids repeated OpenFIGI calls)
+  canAutoUpdate?: boolean              // false for unlisted funds (no exchange price)
   quantity?: number        // number of shares/units
   pricePerUnit?: number    // current price per unit in EUR (auto-updated)
   purchasePrice?: number   // average purchase price per unit (for P&L)

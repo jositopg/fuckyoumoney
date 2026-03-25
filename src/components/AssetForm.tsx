@@ -4,6 +4,7 @@ import type { Asset, AssetCategory, StocksMetadata, CryptoMetadata, CashMetadata
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '../types'
 import { BottomSheet } from './BottomSheet'
 import { formatEur } from '../utils/calculations'
+import { isISIN } from '../utils/priceUpdater'
 
 interface AssetFormProps {
   isOpen: boolean
@@ -69,6 +70,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   const [wallet, setWallet] = useState('')
   // Stocks extra
   const [assetType, setAssetType] = useState('')
+  const [identifierType, setIdentifierType] = useState<'ticker' | 'isin'>('ticker')
+  const [resolvedTicker, setResolvedTicker] = useState('')
   // Real estate
   const [propertyType, setPropertyType] = useState('')
   const [rePurchasePrice, setRePurchasePrice] = useState('')
@@ -123,6 +126,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       } else if (editAsset.category === 'stocks') {
         const sm = m as StocksMetadata
         setAssetType(sm.assetType || '')
+        setIdentifierType(sm.identifierType || (isISIN(editAsset.symbol || '') ? 'isin' : 'ticker'))
+        setResolvedTicker(sm.resolvedTicker || '')
         setQuantity(sm.quantity?.toString() || '')
         setPricePerUnit(sm.pricePerUnit?.toString() || '')
         setPurchasePrice(sm.purchasePrice?.toString() || '')
@@ -158,7 +163,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setCategory('cash'); setName(''); setValue(''); setSymbol(''); setNotes('')
       setAccountType(''); setInterestRate('')
       setQuantity(''); setPricePerUnit(''); setPurchasePrice(''); setWallet('')
-      setAssetType(''); setPropertyType(''); setRePurchasePrice(''); setMonthlyRent('')
+      setAssetType(''); setIdentifierType('ticker'); setResolvedTicker('')
+      setPropertyType(''); setRePurchasePrice(''); setMonthlyRent('')
       setVehicleType(''); setVehicleYear('')
       setPensionType(''); setPensionManager(''); setMonthlyContribution('')
       setDebtType(''); setDebtInterestRate(''); setMonthlyPayment(''); setDueDate('')
@@ -177,9 +183,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       case 'stocks': {
         const m: StocksMetadata = {}
         if (assetType) m.assetType = assetType as StocksMetadata['assetType']
+        m.identifierType = identifierType
+        if (resolvedTicker) m.resolvedTicker = resolvedTicker
         if (quantity) m.quantity = parseFloat(quantity.replace(',', '.'))
         if (pricePerUnit) m.pricePerUnit = parseFloat(pricePerUnit.replace(',', '.'))
         if (purchasePrice) m.purchasePrice = parseFloat(purchasePrice.replace(',', '.'))
+        // Mark unlisted funds as non-auto-updatable
+        if (assetType === 'fondo_activo' && !symbol.trim()) m.canAutoUpdate = false
         return Object.keys(m).length ? m : undefined
       }
       case 'crypto': {
@@ -344,7 +354,11 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         {category === 'stocks' && (
           <>
             <Field label="Tipo de activo">
-              <SelectInput value={assetType} onChange={setAssetType}>
+              <SelectInput value={assetType} onChange={v => {
+                setAssetType(v)
+                // Unlisted active funds can't auto-update
+                if (v === 'fondo_activo') setIdentifierType('ticker')
+              }}>
                 <option value="">Sin especificar</option>
                 <option value="etf">ETF</option>
                 <option value="fondo_indexado">Fondo indexado</option>
@@ -353,10 +367,82 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
-            <Field label="Ticker / Símbolo" hint="Para actualización automática del precio. Ej: VOO, MSCI, AAPL">
-              <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
-                placeholder="Ej: VOO, IWDA, AAPL" className={inputClass() + ' font-mono uppercase'} />
+
+            {/* Identifier type */}
+            <Field label="¿Cómo lo identificas?">
+              <div className="grid grid-cols-2 gap-2">
+                {(['ticker', 'isin'] as const).map(type => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => { setIdentifierType(type); setSymbol(''); setResolvedTicker('') }}
+                    className={`py-3 rounded-xl font-body font-medium text-label transition-all ${
+                      identifierType === type
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-highest text-on-surface/60'
+                    }`}
+                  >
+                    {type === 'ticker' ? 'Ticker' : 'ISIN'}
+                  </button>
+                ))}
+              </div>
             </Field>
+
+            {/* Ticker path */}
+            {identifierType === 'ticker' && (
+              <Field
+                label="Ticker / Símbolo"
+                hint={
+                  assetType === 'fondo_activo'
+                    ? 'Los fondos de gestión activa sin cotización en bolsa no tienen ticker y no pueden actualizarse automáticamente.'
+                    : 'Para ETFs europeos añade el mercado: .DE (Xetra) · .L (Londres) · .PA (París) · .MC (Madrid) · .MI (Milán) · .AS (Ámsterdam)'
+                }
+              >
+                <input
+                  type="text"
+                  value={symbol}
+                  onChange={e => setSymbol(e.target.value.toUpperCase())}
+                  placeholder={
+                    assetType === 'fondo_activo' ? 'No aplica para fondos no cotizados' :
+                    assetType === 'etf' ? 'Ej: VWCE.DE, IWDA.L, VOO' :
+                    assetType === 'accion' ? 'Ej: AAPL, SAN.MC, ASML.AS' :
+                    'Ej: VOO, VWCE.DE, IWDA.L'
+                  }
+                  disabled={assetType === 'fondo_activo'}
+                  className={inputClass() + ' font-mono uppercase'}
+                />
+              </Field>
+            )}
+
+            {/* ISIN path */}
+            {identifierType === 'isin' && (
+              <>
+                <Field
+                  label="ISIN"
+                  hint="12 caracteres: código de país + 9 alfanuméricos + dígito de control. Ej: IE00B3XXRP09 (Vanguard S&P 500 UCITS)"
+                >
+                  <input
+                    type="text"
+                    value={symbol}
+                    onChange={e => {
+                      setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))
+                      setResolvedTicker('') // clear cache on change
+                    }}
+                    placeholder="Ej: IE00B3XXRP09"
+                    maxLength={12}
+                    className={inputClass() + ' font-mono uppercase tracking-wider'}
+                  />
+                </Field>
+                {resolvedTicker && (
+                  <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center justify-between">
+                    <span className="text-label text-on-surface/60 font-body">Ticker resuelto</span>
+                    <span className="font-mono font-semibold text-primary text-label">{resolvedTicker}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Quantity + price */}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Cantidad (participaciones)" error={errors.value}>
                 <input type="number" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)}
@@ -367,18 +453,23 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                   placeholder="0.00" min="0" step="any" className={inputClass()} />
               </Field>
             </div>
+
             {computed !== null ? (
               <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center justify-between">
                 <span className="text-label text-on-surface/60 font-body">Valor total calculado</span>
                 <span className="font-display font-semibold text-primary">{formatEur(computed)}</span>
               </div>
             ) : (
-              <Field label="O introduce el valor total en €" error={errors.value}
-                hint="Si no tienes el precio por unidad, introduce el valor total directamente">
+              <Field
+                label="O introduce el valor total en €"
+                error={errors.value}
+                hint="Si no tienes el precio por unidad, introduce el valor total directamente"
+              >
                 <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
                   placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
               </Field>
             )}
+
             <Field label="Precio medio de compra (€/u)" hint="Opcional · Para ver tu ganancia o pérdida">
               <input type="number" inputMode="decimal" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
                 placeholder="0.00" min="0" step="any" className={inputClass()} />
