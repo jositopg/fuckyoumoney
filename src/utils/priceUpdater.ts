@@ -103,9 +103,9 @@ export async function updateAssetPrices(assets: Asset[]): Promise<Map<string, nu
     if (price === undefined) continue
     const meta = asset.metadata as CryptoMetadata | undefined
     const quantity = meta?.quantity
-    const newValue = quantity && quantity > 0 ? quantity * price : price
-    // Also update pricePerUnit in metadata — we'll handle this in App.tsx
-    updates.set(asset.id, newValue)
+    // Only update if we know the quantity — otherwise we can't calculate the correct total
+    if (!quantity || quantity <= 0) continue
+    updates.set(asset.id, quantity * price)
   }
 
   for (const asset of stockAssets) {
@@ -113,8 +113,9 @@ export async function updateAssetPrices(assets: Asset[]): Promise<Map<string, nu
     if (price === undefined) continue
     const meta = asset.metadata as StocksMetadata | undefined
     const quantity = meta?.quantity
-    const newValue = quantity && quantity > 0 ? quantity * price : price
-    updates.set(asset.id, newValue)
+    // Only update if we know the quantity — otherwise we can't calculate the correct total
+    if (!quantity || quantity <= 0) continue
+    updates.set(asset.id, quantity * price)
   }
 
   return updates
