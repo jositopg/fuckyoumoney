@@ -12,9 +12,10 @@ interface AutonomyHeroProps {
   assets: Asset[]
   monthlyExpenses: number
   snapshots?: WealthSnapshot[]
+  onQuoteTap?: () => void
 }
 
-export function AutonomyHero({ assets, monthlyExpenses, snapshots }: AutonomyHeroProps) {
+export function AutonomyHero({ assets, monthlyExpenses, snapshots, onQuoteTap }: AutonomyHeroProps) {
   const netWorth = getNetWorth(assets)
   const autonomyMonths = getAutonomyMonths(assets, monthlyExpenses)
   const level = getAutonomyLevel(autonomyMonths)
@@ -105,11 +106,20 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots }: AutonomyHer
       )}
 
       {/* Daily quote */}
-      <div className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
+      <button
+        onClick={onQuoteTap}
+        className="w-full text-left bg-surface-container-lowest rounded-xl p-4 shadow-soft"
+        disabled={!onQuoteTap}
+      >
         <p className="text-body text-on-surface/70 font-body leading-relaxed italic">
           "{quote.text}"
         </p>
-      </div>
+        {onQuoteTap && (
+          <p className="text-label-sm text-on-surface/30 font-body mt-2">
+            La filosofía →
+          </p>
+        )}
+      </button>
 
       {/* Sparkline chart */}
       {snapshots && snapshots.length >= 2 && <WealthChart snapshots={snapshots} />}

@@ -22,6 +22,12 @@ const AssetForm = lazy(() => import('./components/AssetForm').then(m => ({ defau
 const SettingsSheet = lazy(() =>
   import('./components/SettingsSheet').then(m => ({ default: m.SettingsSheet }))
 )
+const InsightsSheet = lazy(() =>
+  import('./components/InsightsSheet').then(m => ({ default: m.InsightsSheet }))
+)
+const PhilosophySheet = lazy(() =>
+  import('./components/PhilosophySheet').then(m => ({ default: m.PhilosophySheet }))
+)
 
 const DEFAULT_DATA: AppData = {
   assets: [],
@@ -34,6 +40,8 @@ export default function App() {
   const [data, setData] = useLocalStorage<AppData>('fym_data', DEFAULT_DATA, migrateData)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isPhilosophyOpen, setIsPhilosophyOpen] = useState(false)
+  const [isInsightsOpen, setIsInsightsOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [showExportReminder, setShowExportReminder] = useState(false)
   const isOnline = useOnlineStatus()
@@ -208,6 +216,7 @@ export default function App() {
           assets={data.assets}
           monthlyExpenses={data.monthlyExpenses}
           snapshots={data.snapshots}
+          onQuoteTap={() => setIsPhilosophyOpen(true)}
         />
 
         {/* Price update banner */}
@@ -229,7 +238,11 @@ export default function App() {
 
         {/* Metrics */}
         {hasAnyAssets && (
-          <MetricsSection assets={data.assets} monthlyExpenses={data.monthlyExpenses} />
+          <MetricsSection
+            assets={data.assets}
+            monthlyExpenses={data.monthlyExpenses}
+            onInsightsTap={() => setIsInsightsOpen(true)}
+          />
         )}
 
         {/* Assets by category */}
@@ -313,6 +326,21 @@ export default function App() {
           onSave={handleSaveSettings}
           data={data}
           setData={setData}
+        />
+
+        {/* Philosophy */}
+        <PhilosophySheet
+          isOpen={isPhilosophyOpen}
+          onClose={() => setIsPhilosophyOpen(false)}
+        />
+
+        {/* Insights */}
+        <InsightsSheet
+          isOpen={isInsightsOpen}
+          onClose={() => setIsInsightsOpen(false)}
+          assets={data.assets}
+          monthlyExpenses={data.monthlyExpenses}
+          snapshots={data.snapshots}
         />
       </Suspense>
     </div>

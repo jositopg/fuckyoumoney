@@ -12,6 +12,7 @@ import {
 interface MetricsSectionProps {
   assets: Asset[]
   monthlyExpenses: number
+  onInsightsTap?: () => void
 }
 
 function MetricCard({ label, value, sub, highlight }: {
@@ -35,7 +36,7 @@ function MetricCard({ label, value, sub, highlight }: {
   )
 }
 
-export function MetricsSection({ assets, monthlyExpenses }: MetricsSectionProps) {
+export function MetricsSection({ assets, monthlyExpenses, onInsightsTap }: MetricsSectionProps) {
   const emergencyMonths = getEmergencyFundMonths(assets, monthlyExpenses)
   const debtRatio = getDebtRatio(assets)
   const warning = getDiversificationWarning(assets)
@@ -53,11 +54,21 @@ export function MetricsSection({ assets, monthlyExpenses }: MetricsSectionProps)
 
   return (
     <div className="mb-6">
-      <div className="flex items-center gap-2 mb-3">
-        <TrendingUp size={14} className="text-on-surface/40" />
-        <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide">
-          Indicadores
-        </h3>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={14} className="text-on-surface/40" />
+          <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide">
+            Indicadores
+          </h3>
+        </div>
+        {onInsightsTap && (
+          <button
+            onClick={onInsightsTap}
+            className="text-label-sm text-primary font-body font-medium"
+          >
+            Ver análisis →
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
