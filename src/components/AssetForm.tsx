@@ -14,7 +14,8 @@ interface AssetFormProps {
   editAsset?: Asset | null
 }
 
-// Reusable field components for consistent styling
+// ── Shared form components ─────────────────────────────────────────────────────
+
 function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: React.ReactNode }) {
   return (
     <div>
@@ -50,19 +51,76 @@ function SelectInput({ value, onChange, children }: { value: string; onChange: (
   )
 }
 
+// ── Teaching callout ───────────────────────────────────────────────────────────
+
+function TeachingCallout({
+  icon,
+  title,
+  body,
+  highlight,
+  warn = false,
+}: {
+  icon: string
+  title: string
+  body: string
+  highlight?: { label: string; value: string }
+  warn?: boolean
+}) {
+  return (
+    <div className="rounded-xl p-4 flex items-start gap-3 bg-surface-container-low">
+      <span className="text-xl mt-0.5 flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-label font-semibold text-on-surface font-body mb-1">{title}</p>
+        <p className="text-label-sm text-on-surface/55 font-body leading-relaxed">{body}</p>
+        {highlight && (
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="text-label-sm text-on-surface/50 font-body">{highlight.label}</span>
+            <span className={`text-label font-semibold font-body tabular-nums ${warn ? 'text-error' : 'text-primary'}`}>
+              {highlight.value}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Auto-update status (stocks / crypto) ──────────────────────────────────────
+
+function AutoUpdateStatus({ hasSymbol, hasQuantity }: { hasSymbol: boolean; hasQuantity: boolean }) {
+  const isActive = hasSymbol && hasQuantity
+  return (
+    <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${isActive ? 'bg-primary-container/40' : 'bg-surface-container-low'}`}>
+      <span className="text-base flex-shrink-0">{isActive ? '🔄' : '⚙️'}</span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-label font-semibold font-body ${isActive ? 'text-primary' : 'text-on-surface/70'}`}>
+          {isActive ? 'Precio actualizado automáticamente' : 'Actualización automática desactivada'}
+        </p>
+        <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
+          {isActive
+            ? 'Cada vez que abres la app, el precio se actualiza solo. Valor = cantidad × precio de mercado.'
+            : `Para activarlo: añade ${!hasSymbol ? 'el símbolo' : ''}${!hasSymbol && !hasQuantity ? ' y ' : ''}${!hasQuantity ? 'la cantidad que tienes' : ''}.`
+          }
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ── Main form ──────────────────────────────────────────────────────────────────
+
 export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: AssetFormProps) {
   const [category, setCategory] = useState<AssetCategory>('cash')
   const [name, setName] = useState('')
-  const [value, setValue] = useState('')         // total EUR (manual input)
+  const [value, setValue] = useState('')
   const [symbol, setSymbol] = useState('')
   const [notes, setNotes] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Per-category metadata fields
   // Cash
   const [accountType, setAccountType] = useState('')
   const [interestRate, setInterestRate] = useState('')
-  // Stocks / Crypto (shared)
+  // Stocks / Crypto
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
@@ -101,6 +159,56 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
 
   const computed = computedValue()
 
+  // ── Derived values for teaching callouts ──────────────────────────────────
+
+  const numValue = parseFloat(value.replace(',', '.'))
+
+  // Cash: annual interest earned
+  const cashRateNum = parseFloat(interestRate.replace(',', '.'))
+  const annualInterestEarned =
+    !isNaN(numValue) && !isNaN(cashRateNum) && numValue > 0 && cashRateNum > 0
+      ? Math.round(numValue * cashRateNum / 100)
+      : null
+
+  // Debt: total interest cost over loan life
+  const debtRateNum = parseFloat(debtInterestRate.replace(',', '.'))
+  const debtPaymentNum = parseFloat(monthlyPayment.replace(',', '.'))
+  const debtTotalInterest = (() => {
+    if (isNaN(numValue) || isNaN(debtRateNum) || isNaN(debtPaymentNum)) return null
+    if (numValue <= 0 || debtRateNum <= 0 || debtPaymentNum <= 0) return null
+    const r = debtRateNum / 100 / 12
+    if (debtPaymentNum <= numValue * r) return null // payment doesn't cover interest
+    const n = -Math.log(1 - r * numValue / debtPaymentNum) / Math.log(1 + r)
+    return Math.round(debtPaymentNum * n - numValue)
+  })()
+
+  // Pension: projection at 20 years assuming 6% annual return
+  const monthlyContribNum = parseFloat(monthlyContribution.replace(',', '.'))
+  const pensionIn20Years = (() => {
+    const v = !isNaN(numValue) && numValue > 0 ? numValue : 0
+    const m = !isNaN(monthlyContribNum) && monthlyContribNum > 0 ? monthlyContribNum : 0
+    if (v === 0 && m === 0) return null
+    const r = 0.005 // 6% annual / 12 months
+    const n = 240
+    return Math.round(v * Math.pow(1 + r, n) + (m > 0 ? m * (Math.pow(1 + r, n) - 1) / r : 0))
+  })()
+
+  // Real estate: gross rental yield
+  const rentNum = parseFloat(monthlyRent.replace(',', '.'))
+  const rentalYieldPct =
+    !isNaN(numValue) && !isNaN(rentNum) && numValue > 0 && rentNum > 0
+      ? Math.round((rentNum * 12 / numValue) * 100 * 10) / 10
+      : null
+
+  // Vehicle: estimated depreciation based on age
+  const vehicleAgeYears = vehicleYear ? new Date().getFullYear() - parseInt(vehicleYear) : null
+  const vehicleDepreciationPct =
+    vehicleAgeYears !== null && vehicleAgeYears > 0
+      ? Math.min(Math.round(100 * (1 - Math.pow(0.85, vehicleAgeYears))), 90)
+      : null
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!isOpen) return
     if (editAsset) {
@@ -111,7 +219,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setNotes(editAsset.notes || '')
 
       const m = editAsset.metadata || {}
-      // Reset all
       setAccountType(''); setInterestRate('')
       setQuantity(''); setPricePerUnit(''); setPurchasePrice(''); setWallet('')
       setAssetType(''); setPropertyType(''); setRePurchasePrice(''); setMonthlyRent('')
@@ -159,7 +266,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         setDueDate(dm.dueDate || '')
       }
     } else {
-      // Reset all for new asset
       setCategory('cash'); setName(''); setValue(''); setSymbol(''); setNotes('')
       setAccountType(''); setInterestRate('')
       setQuantity(''); setPricePerUnit(''); setPurchasePrice(''); setWallet('')
@@ -188,7 +294,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         if (quantity) m.quantity = parseFloat(quantity.replace(',', '.'))
         if (pricePerUnit) m.pricePerUnit = parseFloat(pricePerUnit.replace(',', '.'))
         if (purchasePrice) m.purchasePrice = parseFloat(purchasePrice.replace(',', '.'))
-        // Mark unlisted funds as non-auto-updatable
         if (assetType === 'fondo_activo' && !symbol.trim()) m.canAutoUpdate = false
         return Object.keys(m).length ? m : undefined
       }
@@ -233,7 +338,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   }
 
   function getFinalValue(): number {
-    // For stocks/crypto: prefer computed (quantity × price), fall back to manual value
     if (category === 'stocks' || category === 'crypto') {
       if (computed !== null) return computed
     }
@@ -267,7 +371,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
     const finalValue = getFinalValue()
     const metadata = buildMetadata()
 
-    // Update pricePerUnit in metadata if computed
     let enrichedMetadata = metadata
     if (computed !== null && (category === 'stocks' || category === 'crypto')) {
       const p = parseFloat(pricePerUnit.replace(',', '.'))
@@ -337,7 +440,49 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
+
+            {/* Teaching callout per account type */}
+            {accountType === 'corriente' && (
+              <TeachingCallout
+                icon="💳"
+                title="La cuenta corriente no es un lugar para ahorrar"
+                body="Es para operar, no para acumular. El dinero aquí pierde valor silenciosamente con la inflación. Guarda solo lo que vayas a necesitar este mes — el resto, ponlo a trabajar."
+              />
+            )}
+            {accountType === 'ahorro' && (
+              <TeachingCallout
+                icon="🛡️"
+                title="El primer paso: el colchón de emergencia"
+                body="Usa esta cuenta para tener entre 3 y 6 meses de gastos accesibles. No es rentable — no tiene que serlo. Su función es protegerte de tomar malas decisiones cuando la vida se complica. Lo que supere ese colchón, invierte."
+              />
+            )}
             {accountType === 'remunerada' && (
+              <TeachingCallout
+                icon="📊"
+                title="Buena opción para el colchón, no para acumular"
+                body="Una cuenta remunerada es mejor que el colchón sin intereses, pero no es una inversión. Úsala para el fondo de emergencia y para dinero que puedas necesitar pronto. Lo que no vayas a tocar en 5 años, debería estar invertido."
+                highlight={annualInterestEarned !== null ? {
+                  label: `Con este saldo al ${cashRateNum}% TAE, generas ~`,
+                  value: `${formatEur(annualInterestEarned)}/año`,
+                } : undefined}
+              />
+            )}
+            {accountType === 'nomina' && (
+              <TeachingCallout
+                icon="💼"
+                title="La cuenta nómina: práctica, pero no productiva"
+                body="Domicilia lo justo para cubrir gastos del mes. El dinero que supere tu colchón de emergencia no debería quedarse aquí — muévelo a donde pueda crecer."
+              />
+            )}
+            {!accountType && (
+              <TeachingCallout
+                icon="💵"
+                title="El efectivo es liquidez, no riqueza"
+                body="Mantén en efectivo solo lo necesario: el día a día más tu colchón de emergencia (3-6 meses de gastos). El resto debería estar en activos que produzcan."
+              />
+            )}
+
+            {(accountType === 'remunerada' || accountType === 'ahorro') && (
               <Field label="Interés anual (%)" hint="Ej: 3.5 para una cuenta al 3.5% TAE">
                 <input type="number" inputMode="decimal" value={interestRate} onChange={e => setInterestRate(e.target.value)}
                   placeholder="0.00" min="0" step="0.01" className={inputClass()} />
@@ -356,7 +501,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
             <Field label="Tipo de activo">
               <SelectInput value={assetType} onChange={v => {
                 setAssetType(v)
-                // Unlisted active funds can't auto-update
                 if (v === 'fondo_activo') setIdentifierType('ticker')
               }}>
                 <option value="">Sin especificar</option>
@@ -367,6 +511,36 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
+
+            {/* Teaching callout per stock type */}
+            {(assetType === 'etf' || assetType === 'fondo_indexado') && (
+              <TeachingCallout
+                icon="📈"
+                title="La opción más inteligente para la mayoría"
+                body="Los fondos indexados y ETFs replican el mercado entero sin apostar por nadie. Sin gestores que fallen, con comisiones mínimas. El 80% de los fondos activos no los baten a 10 años. El tiempo es tu principal ventaja."
+              />
+            )}
+            {assetType === 'accion' && (
+              <TeachingCallout
+                icon="🎯"
+                title="Apostar por una empresa es concentrar el riesgo"
+                body="Una acción individual es una apuesta por ese equipo directivo, ese sector y esa economía. Ninguna posición individual debería superar el 10% de tu cartera — si esa empresa quiebra, esa parte desaparece. Diversifica."
+              />
+            )}
+            {assetType === 'fondo_activo' && (
+              <TeachingCallout
+                icon="⚠️"
+                title="Ojo con las comisiones de los fondos activos"
+                body="El 80% de los fondos activos no baten al índice a 10 años. Una comisión del 1.5% anual parece pequeña, pero en 20 años puede costarte el equivalente a varios años de rentabilidad. Compara siempre el TER con un fondo indexado equivalente."
+              />
+            )}
+            {!assetType && (
+              <TeachingCallout
+                icon="📊"
+                title="Invierte solo lo que no vas a necesitar pronto"
+                body="La bolsa a corto plazo es impredecible. A largo plazo, históricamente recompensa la paciencia. Regla básica: dinero invertido en renta variable = dinero que no necesitas en los próximos 5 años."
+              />
+            )}
 
             {/* Identifier type */}
             <Field label="¿Cómo lo identificas?">
@@ -426,7 +600,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                     value={symbol}
                     onChange={e => {
                       setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))
-                      setResolvedTicker('') // clear cache on change
+                      setResolvedTicker('')
                     }}
                     placeholder="Ej: IE00B3XXRP09"
                     maxLength={12}
@@ -470,6 +644,12 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               </Field>
             )}
 
+            {/* Auto-update status */}
+            <AutoUpdateStatus
+              hasSymbol={!!(symbol.trim()) && assetType !== 'fondo_activo'}
+              hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
+            />
+
             <Field label="Precio medio de compra (€/u)" hint="Opcional · Para ver tu ganancia o pérdida">
               <input type="number" inputMode="decimal" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
                 placeholder="0.00" min="0" step="any" className={inputClass()} />
@@ -480,6 +660,12 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         {/* ===== CRYPTO FIELDS ===== */}
         {category === 'crypto' && (
           <>
+            <TeachingCallout
+              icon="⚡"
+              title="Alta rentabilidad, alto riesgo real"
+              body="La cripto puede multiplicarse y puede llegar a cero en meses. Regla de oro: nunca más del 5-10% del patrimonio total en cripto. Solo invierte lo que puedas perder sin que cambie tu vida ni tus planes."
+            />
+
             <Field label="Símbolo" hint="Soportados: BTC, ETH, SOL, ADA, DOT, AVAX, XRP, DOGE, BNB y más">
               <input type="text" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())}
                 placeholder="Ej: BTC, ETH, SOL" className={inputClass() + ' font-mono uppercase'} />
@@ -506,6 +692,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                   placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
               </Field>
             )}
+
+            {/* Auto-update status */}
+            <AutoUpdateStatus
+              hasSymbol={!!(symbol.trim())}
+              hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
+            />
+
             <Field label="Precio de compra (€/u)" hint="Opcional · Para ver tu ganancia o pérdida">
               <input type="number" inputMode="decimal" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
                 placeholder="0.00" min="0" step="any" className={inputClass()} />
@@ -531,6 +724,41 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
+
+            {/* Teaching callout per property type */}
+            {propertyType === 'vivienda_habitual' && (
+              <TeachingCallout
+                icon="🏠"
+                title="Tu casa no es un activo productivo"
+                body="La vivienda habitual no genera ingresos — es un coste fijo que algún día terminas de pagar. No la cuentes como riqueza generadora. Es calidad de vida y estabilidad, que también tiene valor, pero no es lo mismo que un activo que trabaja para ti."
+              />
+            )}
+            {propertyType === 'alquiler' && (
+              <TeachingCallout
+                icon="🏢"
+                title="El inmueble en alquiler: activo productivo si sale bien"
+                body="La rentabilidad bruta es solo la mitad del cuadro. Descuenta IBI, comunidad de propietarios, seguros, reparaciones y periodos de vacío. El mínimo rentable suele ser un 4-5% neto. Por encima de eso, el inmueble trabaja para ti."
+                highlight={rentalYieldPct !== null ? {
+                  label: 'Rentabilidad bruta estimada:',
+                  value: `${rentalYieldPct}%`,
+                } : undefined}
+              />
+            )}
+            {(propertyType === 'local' || propertyType === 'garaje' || propertyType === 'terreno') && (
+              <TeachingCallout
+                icon="🏗️"
+                title="Inmueble no residencial: más rentabilidad, más riesgo de vacío"
+                body="Los inmuebles no residenciales pueden generar más rendimiento que la vivienda, pero también tienen periodos de vacío más largos y son más difíciles de vender. Son activos de largo plazo: no esperes liquidez rápida si necesitas el dinero."
+              />
+            )}
+            {!propertyType && (
+              <TeachingCallout
+                icon="🏗️"
+                title="El inmueble: valor sólido, liquidez baja"
+                body="Un piso no se convierte en efectivo en 48 horas. Tiene valor, pero es un activo ilíquido. Mantén siempre una parte del patrimonio en activos que puedas acceder rápidamente ante una emergencia."
+              />
+            )}
+
             <Field label="Valor estimado actual en €" error={errors.value}
               hint="Precio al que podrías venderlo hoy. Actualízalo anualmente.">
               <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
@@ -563,6 +791,27 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               <input type="number" inputMode="numeric" value={vehicleYear} onChange={e => setVehicleYear(e.target.value)}
                 placeholder="Ej: 2019" min="1950" max={new Date().getFullYear()} className={inputClass()} />
             </Field>
+
+            {/* Teaching callout — dynamic if year is known */}
+            {vehicleDepreciationPct !== null ? (
+              <TeachingCallout
+                icon="📉"
+                title="Un vehículo no es una inversión — es una herramienta"
+                body={`Con ${vehicleAgeYears} año${vehicleAgeYears !== 1 ? 's' : ''} de antigüedad, un vehículo ha perdido de media entre un ${vehicleDepreciationPct - 5}% y un ${vehicleDepreciationPct + 5}% de su valor original. Seguirá perdiendo cada año. Cómpralo por necesidad, mantenlo el tiempo suficiente para amortizarlo, y no lo cuentes como activo revalorizable.`}
+                highlight={{
+                  label: 'Depreciación estimada acumulada:',
+                  value: `~${vehicleDepreciationPct}%`,
+                }}
+                warn
+              />
+            ) : (
+              <TeachingCallout
+                icon="📉"
+                title="Un vehículo no es una inversión — es una herramienta"
+                body="Un coche nuevo pierde entre el 15% y el 25% de su valor el primer año. Seguros, combustible, mantenimiento, depreciación — todo suma. Cómpralo por necesidad, no por aspiración, y no lo cuentes como un activo que crece."
+              />
+            )}
+
             <Field label="Valor estimado actual en €" error={errors.value}
               hint="Precio al que podrías venderlo hoy. Deprecia con el tiempo.">
               <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
@@ -584,6 +833,17 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
+
+            <TeachingCallout
+              icon="🌱"
+              title="El activo más potente a largo plazo: el tiempo"
+              body="Los planes de pensiones tienen ventajas fiscales reales, pero la liquidez es casi nula hasta la jubilación. Su poder está en el interés compuesto a décadas: pequeñas aportaciones regulares producen resultados que parecen imposibles. Empieza cuanto antes, aunque sea poco."
+              highlight={pensionIn20Years !== null ? {
+                label: 'Estimación en 20 años al 6% anual:',
+                value: formatEur(pensionIn20Years, true),
+              } : undefined}
+            />
+
             <Field label="Gestora" hint="Opcional · Ej: Indexa Capital, Finizens, Bestinver...">
               <input type="text" value={pensionManager} onChange={e => setPensionManager(e.target.value)}
                 placeholder="Ej: Indexa Capital, Finizens..." className={inputClass()} />
@@ -613,6 +873,78 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <option value="otro">Otro</option>
               </SelectInput>
             </Field>
+
+            {/* Teaching callout per debt type */}
+            {debtType === 'hipoteca' && (
+              <TeachingCallout
+                icon="🏦"
+                title="La hipoteca: la deuda más barata que existe"
+                body="Es deuda cara, pero es la más barata del mercado. Acepta si la cuota mensual total no supera el 30% de tus ingresos netos. Y recuerda: amortizar hipoteca anticipadamente tiene un rendimiento garantizado equivalente al tipo de interés que pagas."
+                highlight={debtTotalInterest !== null ? {
+                  label: 'Pagarás en intereses en total:',
+                  value: `~${formatEur(debtTotalInterest)}`,
+                } : undefined}
+              />
+            )}
+            {(debtType === 'prestamo_personal') && (
+              <TeachingCallout
+                icon="⚠️"
+                title="Deuda cara: liquidar antes de invertir"
+                body="Un préstamo personal al 6-10% tiene un coste de oportunidad alto. Cualquier inversión necesita batir ese rendimiento para tener sentido. La deuda al consumo rara vez financia activos que generen más de lo que cobran."
+                highlight={debtTotalInterest !== null ? {
+                  label: 'Intereses totales estimados:',
+                  value: `~${formatEur(debtTotalInterest)}`,
+                } : undefined}
+                warn
+              />
+            )}
+            {debtType === 'prestamo_coche' && (
+              <TeachingCallout
+                icon="🚗"
+                title="Financiar lo que se deprecia: la combinación más costosa"
+                body="Pagas intereses por algo que cada año vale menos. Si tienes capacidad de ahorro, ahorra primero y compra al contado — ahorrarás los intereses del préstamo y negociarás mejor el precio. Si necesitas financiación, elige el plazo más corto posible."
+                highlight={debtTotalInterest !== null ? {
+                  label: 'Intereses totales estimados:',
+                  value: `~${formatEur(debtTotalInterest)}`,
+                } : undefined}
+                warn
+              />
+            )}
+            {debtType === 'tarjeta' && (
+              <TeachingCallout
+                icon="🔴"
+                title="La trampa financiera más común: la tarjeta con intereses"
+                body="Un 18-25% TAE convierte 1.000€ en 2.000€ de deuda real en poco tiempo. Si tienes saldo con intereses en una tarjeta, liquídala antes que cualquier otra cosa — es la deuda más cara del mercado. Las tarjetas son herramientas útiles si se pagan íntegramente cada mes."
+                warn
+              />
+            )}
+            {debtType === 'estudiante' && (
+              <TeachingCallout
+                icon="🎓"
+                title="¿Inversión o gasto? Depende del retorno real"
+                body="El préstamo de estudios puede ser una inversión si incrementa tu capacidad de generar ingresos de forma significativa. Evalúa el ROI real: ¿cuántos años tardarás en recuperar el coste con la mejora salarial que esperas? Si la respuesta es incierta, es un gasto financiado."
+              />
+            )}
+            {debtType === 'otro' && (
+              <TeachingCallout
+                icon="💡"
+                title="Toda deuda tiene un coste real"
+                body="Compara siempre el tipo de interés con lo que podrías ganar invirtiendo ese dinero. La deuda solo sale rentable cuando el activo que financia produce más de lo que cobra en intereses. Si no financia un activo productivo, es riqueza que cedes."
+                highlight={debtTotalInterest !== null ? {
+                  label: 'Intereses totales estimados:',
+                  value: `~${formatEur(debtTotalInterest)}`,
+                } : undefined}
+                warn
+              />
+            )}
+            {!debtType && (
+              <TeachingCallout
+                icon="⚖️"
+                title="Deuda buena vs deuda mala"
+                body="No toda deuda es igual. La deuda buena financia un activo que genera más de lo que cuesta en intereses. La deuda mala financia consumo o activos que se deprecian. Pregúntate siempre: ¿esto pone dinero en mi bolsillo o me lo quita?"
+              />
+            )}
+
             <Field label="Importe pendiente en €" error={errors.value}
               hint="Capital que aún debes. Se restará de tu patrimonio.">
               <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
