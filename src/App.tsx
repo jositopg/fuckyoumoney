@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { lazy, Suspense } from 'react'
 import { Plus, Settings } from 'lucide-react'
-import type { Asset, AppData, StocksMetadata, CryptoMetadata } from './types'
+import type { Asset, AppData, StocksMetadata, CryptoMetadata, CommodityMetadata } from './types'
 import { CATEGORY_ORDER } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
@@ -14,7 +14,7 @@ import { MetricsSection } from './components/MetricsSection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
-import { updateAssetPrices } from './utils/priceUpdater'
+import { updateAssetPrices, applyDailyInterest } from './utils/priceUpdater'
 import { getAutonomyMonths } from './utils/calculations'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
@@ -54,9 +54,14 @@ export default function App() {
   // Auto price update on mount
   const runPriceUpdate = useCallback(
     async (assets: Asset[]) => {
-      const updatableAssets = assets.filter(
-        a => (a.category === 'crypto' || a.category === 'stocks') && a.symbol
-      )
+      const updatableAssets = assets.filter(a => {
+        if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
+        if (a.category === 'commodities') {
+          const meta = a.metadata as CommodityMetadata | undefined
+          return !!meta?.commodityType && meta.commodityType !== 'otro'
+        }
+        return false
+      })
       if (updatableAssets.length === 0) return
       if (!navigator.onLine) return
 
@@ -73,8 +78,8 @@ export default function App() {
             if (newValue === undefined && !newResolvedTicker) return a
 
             let updatedMetadata = a.metadata
-            if (a.category === 'stocks' || a.category === 'crypto') {
-              const meta = a.metadata as StocksMetadata | CryptoMetadata | undefined
+            if (a.category === 'stocks' || a.category === 'crypto' || a.category === 'commodities') {
+              const meta = a.metadata as StocksMetadata | CryptoMetadata | CommodityMetadata | undefined
               const quantity = meta?.quantity
               const newPricePerUnit = quantity && quantity > 0 && newValue !== undefined
                 ? newValue / quantity
@@ -105,6 +110,11 @@ export default function App() {
   )
 
   useEffect(() => {
+    // Apply daily compound interest to fixed-rate accounts (synchronous, local)
+    setData(prev => {
+      const updatedAssets = applyDailyInterest(prev.assets)
+      return updatedAssets === prev.assets ? prev : { ...prev, assets: updatedAssets }
+    })
     runPriceUpdate(data.assets)
     // Take monthly snapshot on mount
     setData(prev => takeSnapshot(prev))
@@ -128,9 +138,14 @@ export default function App() {
 
   const hasAnyAssets = data.assets.length > 0
   const autonomyMonths = getAutonomyMonths(data.assets, data.monthlyExpenses)
-  const hasSymbolAssets = data.assets.some(
-    a => (a.category === 'crypto' || a.category === 'stocks') && a.symbol
-  )
+  const hasSymbolAssets = data.assets.some(a => {
+    if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
+    if (a.category === 'commodities') {
+      const meta = a.metadata as CommodityMetadata | undefined
+      return !!meta?.commodityType && meta.commodityType !== 'otro'
+    }
+    return false
+  })
 
   function handleSaveAsset(assetData: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>) {
     if (editAsset) {

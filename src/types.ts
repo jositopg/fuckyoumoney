@@ -6,11 +6,13 @@ export type AssetCategory =
   | 'vehicles'
   | 'pension'
   | 'debt'
+  | 'commodities'
 
 // Per-category metadata — all fields optional for backwards compatibility
 export interface CashMetadata {
   accountType?: 'corriente' | 'ahorro' | 'remunerada' | 'nomina' | 'otro'
-  interestRate?: number // annual % for remunerada accounts
+  interestRate?: number    // annual % for remunerada/ahorro accounts
+  lastInterestUpdate?: string // ISO date — last time compound interest was applied
 }
 
 export interface StocksMetadata {
@@ -54,6 +56,14 @@ export interface DebtMetadata {
   dueDate?: string         // estimated end date YYYY-MM-DD
 }
 
+export interface CommodityMetadata {
+  commodityType?: 'oro' | 'plata' | 'platino' | 'paladio' | 'otro'
+  unit?: 'g' | 'oz' | 'kg'  // oz = troy oz
+  quantity?: number          // amount in grams, troy oz, or kg
+  pricePerUnit?: number      // current price in EUR per unit (auto-updated)
+  purchasePrice?: number     // purchase price per unit in EUR (for P&L)
+}
+
 export type AssetMetadata =
   | CashMetadata
   | StocksMetadata
@@ -62,6 +72,7 @@ export type AssetMetadata =
   | VehicleMetadata
   | PensionMetadata
   | DebtMetadata
+  | CommodityMetadata
 
 export interface Asset {
   id: string
@@ -95,6 +106,7 @@ export const CATEGORY_LABELS: Record<AssetCategory, string> = {
   cash: 'Efectivo / cuentas',
   stocks: 'Acciones, ETFs, fondos',
   crypto: 'Criptomonedas',
+  commodities: 'Metales preciosos',
   real_estate: 'Inmuebles',
   vehicles: 'Vehículos',
   pension: 'Pensiones y PIAS',
@@ -105,6 +117,7 @@ export const CATEGORY_ORDER: AssetCategory[] = [
   'cash',
   'stocks',
   'crypto',
+  'commodities',
   'real_estate',
   'vehicles',
   'pension',

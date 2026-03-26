@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import type { Asset, AssetCategory, CashMetadata, StocksMetadata, CryptoMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata } from '../types'
+import type { Asset, AssetCategory, CashMetadata, StocksMetadata, CryptoMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata, CommodityMetadata } from '../types'
 import { formatEur } from '../utils/calculations'
 
 interface AssetCardProps {
@@ -11,6 +11,7 @@ const CATEGORY_ICONS: Record<AssetCategory, string> = {
   cash: '🏦',
   stocks: '📈',
   crypto: '₿',
+  commodities: '🥇',
   real_estate: '🏠',
   vehicles: '🚗',
   pension: '🏖️',
@@ -83,13 +84,24 @@ function getSecondaryLine(asset: Asset): string | null {
       if (dm.interestRate) parts.push(`${dm.interestRate}% TIN`)
       return parts.join(' · ') || null
     }
+    case 'commodities': {
+      const cm = m as CommodityMetadata
+      const typeLabels: Record<string, string> = {
+        oro: 'Oro', plata: 'Plata', platino: 'Platino', paladio: 'Paladio', otro: 'Otro',
+      }
+      const parts = []
+      if (cm.commodityType) parts.push(typeLabels[cm.commodityType] || '')
+      if (cm.quantity && cm.unit) parts.push(`${cm.quantity} ${cm.unit}`)
+      if (cm.pricePerUnit && cm.unit) parts.push(`${formatEur(cm.pricePerUnit)}/${cm.unit}`)
+      return parts.join(' · ') || null
+    }
     default: return null
   }
 }
 
 function getPnlPercent(asset: Asset): number | null {
-  if (asset.category !== 'stocks' && asset.category !== 'crypto') return null
-  const m = asset.metadata as StocksMetadata | CryptoMetadata | undefined
+  if (asset.category !== 'stocks' && asset.category !== 'crypto' && asset.category !== 'commodities') return null
+  const m = asset.metadata as StocksMetadata | CryptoMetadata | CommodityMetadata | undefined
   if (!m) return null
   const { pricePerUnit, purchasePrice } = m
   if (!pricePerUnit || !purchasePrice || purchasePrice <= 0) return null

@@ -265,11 +265,12 @@ function AutonomyGauge({ months }: { months: number }) {
 }
 
 function AllocationDonut({ assets }: { assets: Asset[] }) {
-  const categories = ['cash', 'stocks', 'crypto', 'real_estate', 'vehicles', 'pension'] as const
+  const categories = ['cash', 'stocks', 'crypto', 'commodities', 'real_estate', 'vehicles', 'pension'] as const
   const colors: Record<string, string> = {
     cash: '#466649',
     stocks: '#3a5a3e',
     crypto: '#c4e8c2',
+    commodities: '#d4a836',
     real_estate: '#dfe3e7',
     vehicles: '#abb4b5',
     pension: '#dbe4e5',
@@ -278,6 +279,7 @@ function AllocationDonut({ assets }: { assets: Asset[] }) {
     cash: 'Efectivo',
     stocks: 'Acciones/ETFs',
     crypto: 'Cripto',
+    commodities: 'Metales',
     real_estate: 'Inmuebles',
     vehicles: 'Vehículos',
     pension: 'Pensión',

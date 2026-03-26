@@ -1,4 +1,4 @@
-import type { Asset, StocksMetadata, CryptoMetadata } from '../types'
+import type { Asset, StocksMetadata, CryptoMetadata, CashMetadata, CommodityMetadata } from '../types'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,16 @@ interface OpenFIGIResponse {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const TROY_OZ_IN_GRAMS = 31.1035
+
+// Yahoo Finance futures tickers for precious metals (quoted in USD/troy oz)
+const COMMODITY_YAHOO_TICKERS: Record<string, string> = {
+  oro: 'GC=F',
+  plata: 'SI=F',
+  platino: 'PL=F',
+  paladio: 'PA=F',
+}
 
 const COINGECKO_MAP: Record<string, string> = {
   BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', ADA: 'cardano',
@@ -231,6 +241,44 @@ export async function updateAssetPrices(assets: Asset[]): Promise<PriceUpdateRes
     }
   }
 
+  // ── Commodities (Yahoo Finance futures → USD/troy oz → EUR → per unit) ──
+  const commodityAssets = assets.filter(a => {
+    if (a.category !== 'commodities') return false
+    const meta = a.metadata as CommodityMetadata | undefined
+    return !!meta?.commodityType && meta.commodityType !== 'otro' && !!meta?.quantity && meta.quantity > 0
+  })
+  if (commodityAssets.length > 0) {
+    const eurusd = await fetchYahooPrice('EURUSD=X')
+    if (eurusd !== null && eurusd > 0) {
+      const uniqueTickers = [...new Set(
+        commodityAssets
+          .map(a => COMMODITY_YAHOO_TICKERS[(a.metadata as CommodityMetadata).commodityType!])
+          .filter(Boolean)
+      )]
+      const commodityPricesUsd = new Map<string, number>()
+      await Promise.allSettled(
+        uniqueTickers.map(async ticker => {
+          const price = await fetchYahooPrice(ticker)
+          if (price !== null) commodityPricesUsd.set(ticker, price)
+        })
+      )
+      for (const asset of commodityAssets) {
+        const meta = asset.metadata as CommodityMetadata
+        const ticker = COMMODITY_YAHOO_TICKERS[meta.commodityType!]
+        const priceUsdPerOz = commodityPricesUsd.get(ticker)
+        if (priceUsdPerOz === undefined) continue
+        const priceEurPerOz = priceUsdPerOz / eurusd
+        let priceEurPerUnit: number
+        switch (meta.unit) {
+          case 'g':  priceEurPerUnit = priceEurPerOz / TROY_OZ_IN_GRAMS; break
+          case 'kg': priceEurPerUnit = (priceEurPerOz / TROY_OZ_IN_GRAMS) * 1000; break
+          default:   priceEurPerUnit = priceEurPerOz; break // 'oz' or undefined
+        }
+        values.set(asset.id, meta.quantity! * priceEurPerUnit)
+      }
+    }
+  }
+
   return { values, resolvedTickers }
 }
 
@@ -262,5 +310,34 @@ export async function fetchPriceForIdentifier(
 export async function fetchPricePerUnit(category: 'crypto' | 'stocks', symbol: string): Promise<number | null> {
   const result = await fetchPriceForIdentifier(category, symbol)
   return result?.price ?? null
+}
+
+/**
+ * Applies daily compound interest to cash accounts with an interestRate set.
+ * Uses the lastInterestUpdate (or updatedAt as fallback) to compute elapsed days.
+ * Returns the same array reference if nothing changed.
+ */
+export function applyDailyInterest(assets: Asset[]): Asset[] {
+  const now = new Date()
+  let changed = false
+  const updated = assets.map(asset => {
+    if (asset.category !== 'cash') return asset
+    const meta = asset.metadata as CashMetadata | undefined
+    if (!meta?.interestRate || meta.interestRate <= 0) return asset
+
+    const lastUpdate = meta.lastInterestUpdate ?? asset.updatedAt
+    const daysDiff = (now.getTime() - new Date(lastUpdate).getTime()) / (1000 * 60 * 60 * 24)
+    if (daysDiff < 1) return asset
+
+    const newValue = asset.value * Math.pow(1 + meta.interestRate / 100, daysDiff / 365)
+    changed = true
+    return {
+      ...asset,
+      value: Math.round(newValue * 100) / 100,
+      metadata: { ...meta, lastInterestUpdate: now.toISOString() } as CashMetadata,
+      updatedAt: now.toISOString(),
+    }
+  })
+  return changed ? updated : assets
 }
 

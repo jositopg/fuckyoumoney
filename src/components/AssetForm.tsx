@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Trash2 } from 'lucide-react'
-import type { Asset, AssetCategory, StocksMetadata, CryptoMetadata, CashMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata } from '../types'
+import type { Asset, AssetCategory, StocksMetadata, CryptoMetadata, CashMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata, CommodityMetadata } from '../types'
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '../types'
 import { BottomSheet } from './BottomSheet'
 import { formatEur } from '../utils/calculations'
@@ -197,16 +197,27 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   const [debtInterestRate, setDebtInterestRate] = useState('')
   const [monthlyPayment, setMonthlyPayment] = useState('')
   const [dueDate, setDueDate] = useState('')
+  // Commodities
+  const [commodityType, setCommodityType] = useState('')
+  const [commodityUnit, setCommodityUnit] = useState<'g' | 'oz' | 'kg'>('g')
+  const [commodityQuantity, setCommodityQuantity] = useState('')
+  const [commodityPricePerUnit, setCommodityPricePerUnit] = useState('')
+  const [commodityPurchasePrice, setCommodityPurchasePrice] = useState('')
 
-  // Computed value for stocks/crypto
+  // Computed value for stocks/crypto/commodities
   const computedValue = useCallback(() => {
     if (category === 'stocks' || category === 'crypto') {
       const q = parseFloat(quantity.replace(',', '.'))
       const p = parseFloat(pricePerUnit.replace(',', '.'))
       if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) return q * p
     }
+    if (category === 'commodities') {
+      const q = parseFloat(commodityQuantity.replace(',', '.'))
+      const p = parseFloat(commodityPricePerUnit.replace(',', '.'))
+      if (!isNaN(q) && !isNaN(p) && q > 0 && p > 0) return q * p
+    }
     return null
-  }, [category, quantity, pricePerUnit])
+  }, [category, quantity, pricePerUnit, commodityQuantity, commodityPricePerUnit])
 
   const computed = computedValue()
 
@@ -276,6 +287,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setVehicleType(''); setVehicleYear('')
       setPensionType(''); setPensionManager(''); setMonthlyContribution('')
       setDebtType(''); setDebtInterestRate(''); setMonthlyPayment(''); setDueDate('')
+      setCommodityType(''); setCommodityUnit('g'); setCommodityQuantity(''); setCommodityPricePerUnit(''); setCommodityPurchasePrice('')
 
       if (editAsset.category === 'cash') {
         const cm = m as CashMetadata
@@ -315,6 +327,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         setDebtInterestRate(dm.interestRate?.toString() || '')
         setMonthlyPayment(dm.monthlyPayment?.toString() || '')
         setDueDate(dm.dueDate || '')
+      } else if (editAsset.category === 'commodities') {
+        const cm = m as CommodityMetadata
+        setCommodityType(cm.commodityType || '')
+        setCommodityUnit(cm.unit || 'g')
+        setCommodityQuantity(cm.quantity?.toString() || '')
+        setCommodityPricePerUnit(cm.pricePerUnit?.toString() || '')
+        setCommodityPurchasePrice(cm.purchasePrice?.toString() || '')
       }
     } else {
       setCategory('cash'); setName(''); setValue(''); setSymbol(''); setNotes('')
@@ -325,6 +344,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setVehicleType(''); setVehicleYear('')
       setPensionType(''); setPensionManager(''); setMonthlyContribution('')
       setDebtType(''); setDebtInterestRate(''); setMonthlyPayment(''); setDueDate('')
+      setCommodityType(''); setCommodityUnit('g'); setCommodityQuantity(''); setCommodityPricePerUnit(''); setCommodityPurchasePrice('')
     }
     setErrors({})
   }, [isOpen, editAsset])
@@ -384,12 +404,21 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         if (dueDate) m.dueDate = dueDate
         return Object.keys(m).length ? m : undefined
       }
+      case 'commodities': {
+        const m: CommodityMetadata = {}
+        if (commodityType) m.commodityType = commodityType as CommodityMetadata['commodityType']
+        m.unit = commodityUnit
+        if (commodityQuantity) m.quantity = parseFloat(commodityQuantity.replace(',', '.'))
+        if (commodityPricePerUnit) m.pricePerUnit = parseFloat(commodityPricePerUnit.replace(',', '.'))
+        if (commodityPurchasePrice) m.purchasePrice = parseFloat(commodityPurchasePrice.replace(',', '.'))
+        return Object.keys(m).length ? m : undefined
+      }
       default: return undefined
     }
   }
 
   function getFinalValue(): number {
-    if (category === 'stocks' || category === 'crypto') {
+    if (category === 'stocks' || category === 'crypto' || category === 'commodities') {
       if (computed !== null) return computed
     }
     return parseFloat(value.replace(',', '.'))
@@ -402,6 +431,14 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
     if (category === 'stocks' || category === 'crypto') {
       const q = parseFloat(quantity.replace(',', '.'))
       const p = parseFloat(pricePerUnit.replace(',', '.'))
+      const hasQuantityAndPrice = !isNaN(q) && !isNaN(p) && q > 0 && p > 0
+      const hasManualValue = !isNaN(parseFloat(value.replace(',', '.'))) && parseFloat(value.replace(',', '.')) >= 0
+      if (!hasQuantityAndPrice && !hasManualValue) {
+        e.value = 'Introduce la cantidad y el precio, o el valor total manualmente'
+      }
+    } else if (category === 'commodities') {
+      const q = parseFloat(commodityQuantity.replace(',', '.'))
+      const p = parseFloat(commodityPricePerUnit.replace(',', '.'))
       const hasQuantityAndPrice = !isNaN(q) && !isNaN(p) && q > 0 && p > 0
       const hasManualValue = !isNaN(parseFloat(value.replace(',', '.'))) && parseFloat(value.replace(',', '.')) >= 0
       if (!hasQuantityAndPrice && !hasManualValue) {
@@ -428,10 +465,16 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       const pNum = parseFloat(pricePerUnit.replace(',', '.'))
 
       if (computed !== null && !isNaN(pNum)) {
-        // User filled quantity + price → use explicit price
         enrichedMetadata = { ...metadata, pricePerUnit: pNum }
       } else if (!isNaN(qNum) && qNum > 0 && !isNaN(finalValue) && finalValue > 0 && (isNaN(pNum) || pNum <= 0)) {
-        // User filled quantity + total value but not unit price → derive it
+        enrichedMetadata = { ...metadata, pricePerUnit: Math.round((finalValue / qNum) * 10000) / 10000 }
+      }
+    } else if (category === 'commodities') {
+      const qNum = parseFloat(commodityQuantity.replace(',', '.'))
+      const pNum = parseFloat(commodityPricePerUnit.replace(',', '.'))
+      if (computed !== null && !isNaN(pNum)) {
+        enrichedMetadata = { ...metadata, pricePerUnit: pNum }
+      } else if (!isNaN(qNum) && qNum > 0 && !isNaN(finalValue) && finalValue > 0 && (isNaN(pNum) || pNum <= 0)) {
         enrichedMetadata = { ...metadata, pricePerUnit: Math.round((finalValue / qNum) * 10000) / 10000 }
       }
     }
@@ -478,6 +521,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               category === 'real_estate' ? 'Ej: Piso Madrid, Local Valencia...' :
               category === 'vehicles' ? 'Ej: Toyota Corolla 2020...' :
               category === 'pension' ? 'Ej: Plan Indexa Capital...' :
+              category === 'commodities' ? 'Ej: Oro físico, Lingote de plata...' :
               'Ej: Cuenta BBVA, Cuenta Trade Republic...'
             }
             className={inputClass(!!errors.name)}
@@ -1027,6 +1071,92 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
             <Field label="Fecha estimada de fin" hint="Opcional">
               <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
                 className={inputClass()} />
+            </Field>
+          </>
+        )}
+
+        {/* ===== COMMODITIES FIELDS ===== */}
+        {category === 'commodities' && (
+          <>
+            <Field label="Tipo de metal">
+              <SelectInput value={commodityType} onChange={setCommodityType}>
+                <option value="">Sin especificar</option>
+                <option value="oro">Oro</option>
+                <option value="plata">Plata</option>
+                <option value="platino">Platino</option>
+                <option value="paladio">Paladio</option>
+                <option value="otro">Otro metal / materia prima</option>
+              </SelectInput>
+            </Field>
+
+            <TeachingCallout
+              icon="🥇"
+              title="Los metales preciosos: reserva de valor, no inversión productiva"
+              body="El oro y la plata protegen contra la inflación y las crisis, pero no generan renta. No pagan dividendos ni intereses. Son una forma de preservar valor a largo plazo, no de crearlo. Útiles para diversificar, pero no más del 5-10% del patrimonio total."
+            />
+
+            {/* Auto-update info */}
+            {commodityType !== 'otro' && (
+              <AutoUpdateInfo
+                hasSymbol={!!(commodityType && commodityType !== '')}
+                hasQuantity={!!(commodityQuantity) && parseFloat(commodityQuantity) > 0}
+              />
+            )}
+            {commodityType === 'otro' && (
+              <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-center gap-2.5">
+                <span className="text-base flex-shrink-0">⚙️</span>
+                <p className="text-label-sm text-on-surface/60 font-body">
+                  Solo actualizamos automáticamente oro (GC=F), plata (SI=F), platino (PL=F) y paladio (PA=F) vía Yahoo Finance. Para otros activos, actualiza el valor manualmente.
+                </p>
+              </div>
+            )}
+
+            <Field label="Unidad de medida">
+              <div className="grid grid-cols-3 gap-2">
+                {(['g', 'oz', 'kg'] as const).map(u => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setCommodityUnit(u)}
+                    className={`py-3 rounded-xl font-body font-medium text-label transition-all ${
+                      commodityUnit === u
+                        ? 'bg-primary text-on-primary'
+                        : 'bg-surface-container-highest text-on-surface/60'
+                    }`}
+                  >
+                    {u === 'g' ? 'Gramos' : u === 'oz' ? 'Onzas troy' : 'Kilogramos'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={`Cantidad (${commodityUnit})`} error={errors.value}>
+                <input type="number" inputMode="decimal" value={commodityQuantity} onChange={e => setCommodityQuantity(e.target.value)}
+                  placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
+              </Field>
+              <Field label={`Precio actual (€/${commodityUnit})`} hint="Opcional si introduces el valor total">
+                <input type="number" inputMode="decimal" value={commodityPricePerUnit} onChange={e => setCommodityPricePerUnit(e.target.value)}
+                  placeholder="0.00" min="0" step="any" className={inputClass()} />
+              </Field>
+            </div>
+
+            {computed !== null ? (
+              <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center justify-between">
+                <span className="text-label text-on-surface/60 font-body">Valor total calculado</span>
+                <span className="font-display font-semibold text-primary">{formatEur(computed)}</span>
+              </div>
+            ) : (
+              <Field label="O introduce el valor total en €" error={errors.value}
+                hint="Si no tienes el precio exacto, introduce el valor total directamente">
+                <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
+                  placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
+              </Field>
+            )}
+
+            <Field label={`Precio de compra (€/${commodityUnit})`} hint="Opcional · Para ver tu ganancia o pérdida">
+              <input type="number" inputMode="decimal" value={commodityPurchasePrice} onChange={e => setCommodityPurchasePrice(e.target.value)}
+                placeholder="0.00" min="0" step="any" className={inputClass()} />
             </Field>
           </>
         )}
