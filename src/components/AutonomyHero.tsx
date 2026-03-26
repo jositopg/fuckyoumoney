@@ -3,6 +3,8 @@ import {
   getAutonomyMonths,
   getAutonomyLevel,
   getNetWorth,
+  getDebtRatio,
+  getContextualMessage,
   formatEur,
 } from '../utils/calculations'
 import { getDailyQuote } from '../utils/quotes'
@@ -24,12 +26,31 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots, onQuoteTap }:
   const hasExpenses = monthlyExpenses > 0
   const hasAssets = assets.length > 0
 
-  // Format autonomy display
+  // Net worth delta vs previous snapshot
+  const prevSnapshot = snapshots && snapshots.length >= 2 ? snapshots[snapshots.length - 2] : null
+  const netWorthDelta = prevSnapshot !== null ? netWorth - prevSnapshot.netWorth : null
+  const showDelta = netWorthDelta !== null && netWorthDelta !== 0
+
+  // Contextual phrase based on current level
+  const debtRatio = getDebtRatio(assets)
+  const contextualMsg = hasAssets ? getContextualMessage(
+    isFinite(autonomyMonths) ? autonomyMonths : 0,
+    netWorth,
+    debtRatio
+  ) : null
+
+  // Format autonomy display — shows days for small amounts
   function getAutonomyDisplay() {
     if (!hasExpenses) return null
     if (!isFinite(autonomyMonths) || autonomyMonths < 0) return null
 
     const months = autonomyMonths
+
+    if (months < 1) {
+      const days = Math.round(months * 30)
+      if (days <= 0) return null
+      return `${days} día${days !== 1 ? 's' : ''}`
+    }
     if (months >= 12) {
       const years = Math.floor(months / 12)
       const rem = Math.round(months % 12)
@@ -56,7 +77,7 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots, onQuoteTap }:
               {autonomyDisplay}
             </h1>
             <p className="text-label text-on-surface/50 font-body mt-1">
-              sin depender de nadie
+              sin necesitar ingresos
             </p>
           </>
         ) : hasAssets ? (
@@ -87,21 +108,33 @@ export function AutonomyHero({ assets, monthlyExpenses, snapshots, onQuoteTap }:
         )}
       </div>
 
-      {/* Level badge */}
+      {/* Level badge + contextual phrase */}
       {hasAssets && (
-        <div className="inline-flex items-center gap-2 bg-primary-container/60 rounded-full px-3.5 py-1.5 mb-5">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-          <span className="text-label font-semibold text-primary font-body">{level.label}</span>
+        <div className="mb-5">
+          <div className="inline-flex items-center gap-2 bg-primary-container/60 rounded-full px-3.5 py-1.5 mb-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+            <span className="text-label font-semibold text-primary font-body">{level.label}</span>
+          </div>
+          {contextualMsg && (
+            <p className="text-label-sm text-on-surface/45 font-body leading-relaxed italic">
+              {contextualMsg}
+            </p>
+          )}
         </div>
       )}
 
-      {/* Net worth (secondary) */}
+      {/* Net worth (secondary) + monthly delta */}
       {hasExpenses && hasAssets && (
-        <div className="flex items-baseline gap-2 mb-5">
+        <div className="flex items-baseline gap-2 mb-5 flex-wrap">
           <span className="text-label text-on-surface/50 font-body">Patrimonio neto</span>
           <span className={`text-title font-display font-semibold tabular-nums ${netWorth < 0 ? 'text-error' : 'text-on-surface'}`}>
             {formatEur(netWorth)}
           </span>
+          {showDelta && (
+            <span className={`text-label-sm font-body font-medium tabular-nums ${netWorthDelta! > 0 ? 'text-primary' : 'text-error'}`}>
+              {netWorthDelta! > 0 ? '↑' : '↓'} {formatEur(Math.abs(netWorthDelta!), true)} este mes
+            </span>
+          )}
         </div>
       )}
 

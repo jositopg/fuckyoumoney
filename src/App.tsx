@@ -7,12 +7,15 @@ import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { AutonomyHero } from './components/AutonomyHero'
+import { MilestoneCard } from './components/MilestoneCard'
+import { PriorityCard } from './components/PriorityCard'
 import { CategorySection } from './components/CategorySection'
 import { MetricsSection } from './components/MetricsSection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
 import { updateAssetPrices } from './utils/priceUpdater'
+import { getAutonomyMonths } from './utils/calculations'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
@@ -124,6 +127,7 @@ export default function App() {
   )
 
   const hasAnyAssets = data.assets.length > 0
+  const autonomyMonths = getAutonomyMonths(data.assets, data.monthlyExpenses)
   const hasSymbolAssets = data.assets.some(
     a => (a.category === 'crypto' || a.category === 'stocks') && a.symbol
   )
@@ -234,6 +238,20 @@ export default function App() {
             onExport={handleExportReminder}
             onDismiss={dismissExportReminder}
           />
+        )}
+
+        {/* Milestone progress */}
+        {hasAnyAssets && data.monthlyExpenses > 0 && (
+          <div className="mb-4">
+            <MilestoneCard autonomyMonths={autonomyMonths} monthlyExpenses={data.monthlyExpenses} />
+          </div>
+        )}
+
+        {/* Priority card */}
+        {hasAnyAssets && (
+          <div className="mb-4">
+            <PriorityCard assets={data.assets} monthlyExpenses={data.monthlyExpenses} />
+          </div>
         )}
 
         {/* Metrics */}
