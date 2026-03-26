@@ -85,24 +85,75 @@ function TeachingCallout({
   )
 }
 
-// ── Auto-update status (stocks / crypto) ──────────────────────────────────────
+// ── Auto-update info (stocks / crypto) ────────────────────────────────────────
+// Shown at the TOP of the section — tells the user exactly what to fill
+// before they start. Collapses to a confirmation badge when both fields are set.
 
-function AutoUpdateStatus({ hasSymbol, hasQuantity }: { hasSymbol: boolean; hasQuantity: boolean }) {
+function AutoUpdateInfo({
+  hasSymbol,
+  hasQuantity,
+  isCrypto = false,
+}: {
+  hasSymbol: boolean
+  hasQuantity: boolean
+  isCrypto?: boolean
+}) {
   const isActive = hasSymbol && hasQuantity
-  return (
-    <div className={`rounded-xl px-4 py-3 flex items-center gap-3 ${isActive ? 'bg-primary-container/40' : 'bg-surface-container-low'}`}>
-      <span className="text-base flex-shrink-0">{isActive ? '🔄' : '⚙️'}</span>
-      <div className="flex-1 min-w-0">
-        <p className={`text-label font-semibold font-body ${isActive ? 'text-primary' : 'text-on-surface/70'}`}>
-          {isActive ? 'Precio actualizado automáticamente' : 'Actualización automática desactivada'}
-        </p>
-        <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
-          {isActive
-            ? 'Cada vez que abres la app, el precio se actualiza solo. Valor = cantidad × precio de mercado.'
-            : `Para activarlo: añade ${!hasSymbol ? 'el símbolo' : ''}${!hasSymbol && !hasQuantity ? ' y ' : ''}${!hasQuantity ? 'la cantidad que tienes' : ''}.`
-          }
+
+  if (isActive) {
+    return (
+      <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center gap-2.5">
+        <span className="text-base flex-shrink-0">🔄</span>
+        <p className="text-label font-semibold text-primary font-body">
+          Actualización automática activada · {isCrypto ? 'CoinGecko' : 'Yahoo Finance'}
         </p>
       </div>
+    )
+  }
+
+  return (
+    <div className="bg-surface-container-low rounded-xl p-4">
+      <p className="text-label font-semibold text-on-surface font-body mb-3">
+        🔄 Para que el precio se actualice automáticamente
+      </p>
+      <div className="space-y-3 mb-3">
+        {/* Step 1 */}
+        <div className="flex items-start gap-3">
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold
+            ${hasSymbol ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-on-surface/40'}`}>
+            {hasSymbol ? '✓' : '1'}
+          </div>
+          <div>
+            <p className="text-label font-semibold text-on-surface font-body">
+              {isCrypto ? 'Símbolo de la criptomoneda' : 'Ticker o ISIN del activo'}
+            </p>
+            <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
+              {isCrypto
+                ? 'Ej: BTC, ETH, SOL, ADA · Identifica la moneda en CoinGecko'
+                : 'Ej: VWCE.DE, AAPL, SAN.MC, IE00B3XXRP09 · Identifica el activo en Yahoo Finance'
+              }
+            </p>
+          </div>
+        </div>
+        {/* Step 2 */}
+        <div className="flex items-start gap-3">
+          <div className={`mt-0.5 w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold
+            ${hasQuantity ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-on-surface/40'}`}>
+            {hasQuantity ? '✓' : '2'}
+          </div>
+          <div>
+            <p className="text-label font-semibold text-on-surface font-body">
+              Cantidad que tienes
+            </p>
+            <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
+              Valor total = cantidad × precio de mercado en tiempo real
+            </p>
+          </div>
+        </div>
+      </div>
+      <p className="text-label-sm text-on-surface/35 font-body border-t border-surface-container-highest pt-2.5 mt-0.5">
+        Sin estos dos campos, el precio no se puede actualizar automáticamente.
+      </p>
     </div>
   )
 }
@@ -542,76 +593,88 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               />
             )}
 
-            {/* Identifier type */}
-            <Field label="¿Cómo lo identificas?">
-              <div className="grid grid-cols-2 gap-2">
-                {(['ticker', 'isin'] as const).map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => { setIdentifierType(type); setSymbol(''); setResolvedTicker('') }}
-                    className={`py-3 rounded-xl font-body font-medium text-label transition-all ${
-                      identifierType === type
-                        ? 'bg-primary text-on-primary'
-                        : 'bg-surface-container-highest text-on-surface/60'
-                    }`}
-                  >
-                    {type === 'ticker' ? 'Ticker' : 'ISIN'}
-                  </button>
-                ))}
+            {/* Auto-update requirements — shown before the fields so user knows upfront */}
+            {assetType !== 'fondo_activo' && (
+              <AutoUpdateInfo
+                hasSymbol={!!(symbol.trim())}
+                hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
+              />
+            )}
+            {assetType === 'fondo_activo' && (
+              <div className="bg-surface-container-low rounded-xl px-4 py-3 flex items-center gap-2.5">
+                <span className="text-base flex-shrink-0">⚙️</span>
+                <p className="text-label-sm text-on-surface/60 font-body">
+                  Los fondos de gestión activa no cotizan en bolsa — el precio no se puede actualizar automáticamente. Actualiza el valor manualmente.
+                </p>
               </div>
-            </Field>
-
-            {/* Ticker path */}
-            {identifierType === 'ticker' && (
-              <Field
-                label="Ticker / Símbolo"
-                hint={
-                  assetType === 'fondo_activo'
-                    ? 'Los fondos de gestión activa sin cotización en bolsa no tienen ticker y no pueden actualizarse automáticamente.'
-                    : 'Para ETFs europeos añade el mercado: .DE (Xetra) · .L (Londres) · .PA (París) · .MC (Madrid) · .MI (Milán) · .AS (Ámsterdam)'
-                }
-              >
-                <input
-                  type="text"
-                  value={symbol}
-                  onChange={e => setSymbol(e.target.value.toUpperCase())}
-                  placeholder={
-                    assetType === 'fondo_activo' ? 'No aplica para fondos no cotizados' :
-                    assetType === 'etf' ? 'Ej: VWCE.DE, IWDA.L, VOO' :
-                    assetType === 'accion' ? 'Ej: AAPL, SAN.MC, ASML.AS' :
-                    'Ej: VOO, VWCE.DE, IWDA.L'
-                  }
-                  disabled={assetType === 'fondo_activo'}
-                  className={inputClass() + ' font-mono uppercase'}
-                />
-              </Field>
             )}
 
-            {/* ISIN path */}
-            {identifierType === 'isin' && (
+            {/* Identifier type + ticker/ISIN — only for non fondo_activo */}
+            {assetType !== 'fondo_activo' && (
               <>
-                <Field
-                  label="ISIN"
-                  hint="12 caracteres: código de país + 9 alfanuméricos + dígito de control. Ej: IE00B3XXRP09 (Vanguard S&P 500 UCITS)"
-                >
-                  <input
-                    type="text"
-                    value={symbol}
-                    onChange={e => {
-                      setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))
-                      setResolvedTicker('')
-                    }}
-                    placeholder="Ej: IE00B3XXRP09"
-                    maxLength={12}
-                    className={inputClass() + ' font-mono uppercase tracking-wider'}
-                  />
-                </Field>
-                {resolvedTicker && (
-                  <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center justify-between">
-                    <span className="text-label text-on-surface/60 font-body">Ticker resuelto</span>
-                    <span className="font-mono font-semibold text-primary text-label">{resolvedTicker}</span>
+                <Field label="¿Cómo lo identificas?">
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['ticker', 'isin'] as const).map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => { setIdentifierType(type); setSymbol(''); setResolvedTicker('') }}
+                        className={`py-3 rounded-xl font-body font-medium text-label transition-all ${
+                          identifierType === type
+                            ? 'bg-primary text-on-primary'
+                            : 'bg-surface-container-highest text-on-surface/60'
+                        }`}
+                      >
+                        {type === 'ticker' ? 'Ticker' : 'ISIN'}
+                      </button>
+                    ))}
                   </div>
+                </Field>
+
+                {identifierType === 'ticker' && (
+                  <Field
+                    label="Ticker / Símbolo"
+                    hint="Para ETFs europeos añade el sufijo del mercado: .DE (Xetra) · .L (Londres) · .PA (París) · .MC (Madrid) · .MI (Milán) · .AS (Ámsterdam)"
+                  >
+                    <input
+                      type="text"
+                      value={symbol}
+                      onChange={e => setSymbol(e.target.value.toUpperCase())}
+                      placeholder={
+                        assetType === 'etf' ? 'Ej: VWCE.DE, IWDA.L, VOO' :
+                        assetType === 'accion' ? 'Ej: AAPL, SAN.MC, ASML.AS' :
+                        'Ej: VOO, VWCE.DE, IWDA.L'
+                      }
+                      className={inputClass() + ' font-mono uppercase'}
+                    />
+                  </Field>
+                )}
+
+                {identifierType === 'isin' && (
+                  <>
+                    <Field
+                      label="ISIN"
+                      hint="12 caracteres alfanuméricos. Ej: IE00B3XXRP09 · Se resolverá automáticamente a ticker para actualizar el precio"
+                    >
+                      <input
+                        type="text"
+                        value={symbol}
+                        onChange={e => {
+                          setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))
+                          setResolvedTicker('')
+                        }}
+                        placeholder="Ej: IE00B3XXRP09"
+                        maxLength={12}
+                        className={inputClass() + ' font-mono uppercase tracking-wider'}
+                      />
+                    </Field>
+                    {resolvedTicker && (
+                      <div className="bg-primary-container/40 rounded-xl px-4 py-3 flex items-center justify-between">
+                        <span className="text-label text-on-surface/60 font-body">Ticker resuelto</span>
+                        <span className="font-mono font-semibold text-primary text-label">{resolvedTicker}</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -622,7 +685,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                 <input type="number" inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)}
                   placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
               </Field>
-              <Field label="Precio actual (€/u)">
+              <Field label="Precio actual (€/u)" hint="Opcional si introduces el valor total abajo">
                 <input type="number" inputMode="decimal" value={pricePerUnit} onChange={e => setPricePerUnit(e.target.value)}
                   placeholder="0.00" min="0" step="any" className={inputClass()} />
               </Field>
@@ -644,12 +707,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               </Field>
             )}
 
-            {/* Auto-update status */}
-            <AutoUpdateStatus
-              hasSymbol={!!(symbol.trim()) && assetType !== 'fondo_activo'}
-              hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
-            />
-
             <Field label="Precio medio de compra (€/u)" hint="Opcional · Para ver tu ganancia o pérdida">
               <input type="number" inputMode="decimal" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
                 placeholder="0.00" min="0" step="any" className={inputClass()} />
@@ -664,6 +721,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               icon="⚡"
               title="Alta rentabilidad, alto riesgo real"
               body="La cripto puede multiplicarse y puede llegar a cero en meses. Regla de oro: nunca más del 5-10% del patrimonio total en cripto. Solo invierte lo que puedas perder sin que cambie tu vida ni tus planes."
+            />
+
+            {/* Auto-update requirements — shown before the fields so user knows upfront */}
+            <AutoUpdateInfo
+              isCrypto
+              hasSymbol={!!(symbol.trim())}
+              hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
             />
 
             <Field label="Símbolo" hint="Soportados: BTC, ETH, SOL, ADA, DOT, AVAX, XRP, DOGE, BNB y más">
@@ -692,12 +756,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                   placeholder="0" min="0" step="any" className={inputClass(!!errors.value)} />
               </Field>
             )}
-
-            {/* Auto-update status */}
-            <AutoUpdateStatus
-              hasSymbol={!!(symbol.trim())}
-              hasQuantity={!!(quantity) && parseFloat(quantity) > 0}
-            />
 
             <Field label="Precio de compra (€/u)" hint="Opcional · Para ver tu ganancia o pérdida">
               <input type="number" inputMode="decimal" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)}
