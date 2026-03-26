@@ -423,10 +423,16 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
     const metadata = buildMetadata()
 
     let enrichedMetadata = metadata
-    if (computed !== null && (category === 'stocks' || category === 'crypto')) {
-      const p = parseFloat(pricePerUnit.replace(',', '.'))
-      if (!isNaN(p)) {
-        enrichedMetadata = { ...metadata, pricePerUnit: p }
+    if (category === 'stocks' || category === 'crypto') {
+      const qNum = parseFloat(quantity.replace(',', '.'))
+      const pNum = parseFloat(pricePerUnit.replace(',', '.'))
+
+      if (computed !== null && !isNaN(pNum)) {
+        // User filled quantity + price → use explicit price
+        enrichedMetadata = { ...metadata, pricePerUnit: pNum }
+      } else if (!isNaN(qNum) && qNum > 0 && !isNaN(finalValue) && finalValue > 0 && (isNaN(pNum) || pNum <= 0)) {
+        // User filled quantity + total value but not unit price → derive it
+        enrichedMetadata = { ...metadata, pricePerUnit: Math.round((finalValue / qNum) * 10000) / 10000 }
       }
     }
 

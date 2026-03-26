@@ -36,7 +36,9 @@ function getSecondaryLine(asset: Asset): string | null {
     case 'stocks': {
       const sm = m as StocksMetadata
       const parts = []
-      if (asset.symbol) parts.push(asset.symbol)
+      // Prefer resolved ticker over raw ISIN for readability
+      const displaySymbol = sm.resolvedTicker || asset.symbol
+      if (displaySymbol) parts.push(displaySymbol)
       if (sm.quantity) parts.push(`${sm.quantity} u.`)
       if (sm.pricePerUnit) parts.push(formatEur(sm.pricePerUnit) + '/u')
       return parts.join(' · ') || null
