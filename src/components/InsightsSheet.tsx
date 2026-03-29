@@ -19,7 +19,6 @@ interface WisdomPill {
   icon: string
   title: string
   body: string
-  tag: string
   // If set, this pill is shown first when the condition is true for the user
   relevantWhen?: (ctx: WisdomContext) => boolean
 }
@@ -39,14 +38,12 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '⚖️',
     title: 'Activo vs Pasivo',
     body: 'Un activo pone dinero en tu bolsillo. Un pasivo te lo saca. Tu coche, aunque lo hayas pagado, es un pasivo: seguros, gasolina, mantenimiento. Tu piso en alquiler es un activo: genera ingresos mes a mes. La clave no es acumular cosas, es acumular cosas que produzcan.',
-    tag: 'Padre Rico, Padre Pobre',
   },
   {
     id: 'good-debt-bad-debt',
     icon: '🏦',
     title: 'Deuda buena vs deuda mala',
     body: 'No toda deuda es mala. La diferencia está en lo que financias. Endeudarte para comprar un activo que genera más de lo que pagas de intereses es deuda buena. Endeudarte para pagar vacaciones o un coche que se deprecia es deuda mala. Pregúntate siempre: ¿esto pone dinero en mi bolsillo o me lo quita?',
-    tag: 'Padre Rico, Padre Pobre',
     relevantWhen: ctx => ctx.debtRatio > 0.3,
   },
   {
@@ -54,7 +51,6 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '🛡️',
     title: 'El colchón de emergencia',
     body: 'Antes de invertir, necesitas entre 3 y 6 meses de gastos en activos líquidos (efectivo o equivalente). No es rentable, no crece, pero te protege de tomar malas decisiones cuando la vida se complica. Un coche que se rompe, una obra en casa, un mes sin trabajo — sin colchón, todo se convierte en deuda.',
-    tag: 'Finanzas básicas',
     relevantWhen: ctx => ctx.emergencyMonths < 3 && ctx.emergencyMonths >= 0,
   },
   {
@@ -62,7 +58,6 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '📈',
     title: 'El interés compuesto',
     body: 'Invertir 200€ al mes durante 30 años al 7% produce más de 240.000€. Pero los primeros 10 años apenas se nota. El interés compuesto es aburrido hasta que de repente no lo es. El tiempo en el mercado es el activo más valioso que tienes — más que el capital inicial.',
-    tag: 'Inversión',
     relevantWhen: ctx => ctx.hasInvestments,
   },
   {
@@ -70,14 +65,12 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '🐀',
     title: 'La carrera de la rata',
     body: 'Trabajas para ganar dinero, gastas ese dinero, necesitas más dinero, trabajas más. Ese ciclo se llama la carrera de la rata. La salida no es ganar más — es que tu dinero trabaje para ti. Cada activo que adquieres es un empleado que trabaja mientras tú duermes.',
-    tag: 'Padre Rico, Padre Pobre',
   },
   {
     id: 'liquidity',
     icon: '💧',
     title: 'La trampa de la iliquidez',
     body: 'Tener patrimonio no es lo mismo que tener liquidez. Un piso valorado en 300.000€ no te sirve para pagar la factura del mes. El patrimonio ilíquido tiene valor, pero no libertad. Mantén siempre una parte de tus activos en algo que puedas convertir en efectivo en menos de 48 horas.',
-    tag: 'Gestión del riesgo',
     relevantWhen: ctx => ctx.liquidPct < 20,
   },
   {
@@ -85,35 +78,30 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '🔄',
     title: 'El coste de oportunidad',
     body: 'Cada euro tiene un precio oculto: el uso alternativo que no le das. Gastar 500€ en algo que no necesitas no son solo 500€ — son también los intereses que habrían generado, las opciones que habrías comprado. El coste real de una compra es lo que dejas de hacer con ese dinero.',
-    tag: 'Economía conductual',
   },
   {
     id: 'pay-yourself-first',
     icon: '💰',
     title: 'Págate primero a ti',
     body: 'La mayoría ahorra lo que sobra al final del mes. El problema es que no suele sobrar nada. El truco es al revés: en cuanto cobres, aparta lo que quieres ahorrar antes de pagar nada. Lo que no ves, no lo gastas. El ahorro automático elimina la fuerza de voluntad de la ecuación.',
-    tag: 'Hábitos financieros',
   },
   {
     id: 'diversification',
     icon: '🗂️',
     title: 'Diversificación: no una cesta, varias',
     body: 'Concentrar más del 70% de tu patrimonio en un solo tipo de activo es un riesgo innecesario. Los inmuebles pueden bajar, la bolsa puede caer, la cripto puede colapsar. Lo que rara vez ocurre es que todo caiga a la vez. Distribuir no reduce la rentabilidad — reduce la volatilidad de tu vida.',
-    tag: 'Gestión del riesgo',
   },
   {
     id: 'inflation',
     icon: '📉',
     title: 'El dinero parado pierde valor',
     body: 'Con una inflación del 3% anual, 10.000€ en efectivo valen 7.400€ en poder adquisitivo diez años después. El dinero que no inviertes no está seguro — está perdiendo. Mantener efectivo para el colchón tiene sentido; tenerlo todo en cuenta corriente es una pérdida silenciosa.',
-    tag: 'Inflación',
   },
   {
     id: 'income-streams',
     icon: '🌊',
     title: 'Fuentes de ingreso múltiples',
     body: 'Un único ingreso es frágil: si desaparece, desaparece todo. Los activos que generan renta pasiva — dividendos, alquiler, intereses — son una segunda fuente que no depende de que tú trabajes ese mes. No hace falta que sea grande; hace falta que exista.',
-    tag: 'Independencia financiera',
     relevantWhen: ctx => ctx.autonomyMonths < 6,
   },
   {
@@ -121,7 +109,6 @@ const WISDOM_PILLS: WisdomPill[] = [
     icon: '🧠',
     title: 'Patrimonio neto, no salario',
     body: 'El salario es lo que ganas. El patrimonio neto es lo que vales. Alguien que gana 30.000€ y ahorra el 20% construye más riqueza que alguien que gana 80.000€ y gasta todo. La riqueza no se mide en ingresos — se mide en lo que queda cuando paras de cobrar.',
-    tag: 'Mentalidad financiera',
   },
 ]
 
@@ -164,12 +151,7 @@ function WisdomPills({ assets, monthlyExpenses }: { assets: Asset[]; monthlyExpe
             <div className="flex items-start gap-3">
               <span className="text-xl mt-0.5 flex-shrink-0">{pill.icon}</span>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                  <p className="text-label font-semibold text-on-surface font-body">{pill.title}</p>
-                  <span className="text-label-sm text-on-surface/40 font-body bg-surface-container-highest rounded-full px-2 py-0.5">
-                    {pill.tag}
-                  </span>
-                </div>
+                <p className="text-label font-semibold text-on-surface font-body mb-1.5">{pill.title}</p>
                 <p className="text-label text-on-surface/60 font-body leading-relaxed">{pill.body}</p>
               </div>
             </div>

@@ -319,6 +319,11 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* Book credit */}
+        <p className="text-center text-label-sm text-on-surface/20 font-body mt-10 pb-2">
+          Inspirada en el libro <em>F*ck You Money</em> de Joan Tubau
+        </p>
       </main>
 
       {/* Floating + button */}

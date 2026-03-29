@@ -94,6 +94,11 @@ export function OnboardingScreen({ onStart }: OnboardingScreenProps) {
       >
         Entendido, empezar
       </button>
+
+      {/* Book credit */}
+      <p className="text-center text-label-sm text-on-surface/30 font-body mt-5">
+        Inspirada en el libro <em>F*ck You Money</em> de Joan Tubau
+      </p>
     </div>
   )
 }
