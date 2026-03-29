@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet'
-import type { Asset, WealthSnapshot, RealEstateMetadata } from '../types'
+import type { Asset, WealthSnapshot, RealEstateMetadata, CashMetadata, DebtMetadata } from '../types'
 import {
   getAutonomyMonths,
   getLiquidAssets,
@@ -516,6 +516,211 @@ function KeyRatios({ assets, monthlyExpenses }: { assets: Asset[]; monthlyExpens
   )
 }
 
+// ── Passive Income vs Expenses ────────────────────────────────────────────────
+
+function PassiveIncomePanel({ assets, monthlyExpenses }: { assets: Asset[]; monthlyExpenses: number }) {
+  const rentalIncome = assets
+    .filter(a => a.category === 'real_estate')
+    .reduce((s, a) => s + ((a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0), 0)
+
+  const interestIncome = assets
+    .filter(a => a.category === 'cash')
+    .reduce((s, a) => {
+      const meta = a.metadata as CashMetadata | undefined
+      const rate = meta?.interestRate ?? 0
+      return rate > 0 ? s + (a.value * rate) / 100 / 12 : s
+    }, 0)
+
+  const totalPassive = rentalIncome + interestIncome
+  if (totalPassive <= 0) return null
+
+  const coveragePct = monthlyExpenses > 0 ? Math.min((totalPassive / monthlyExpenses) * 100, 100) : 0
+  const coverageRounded = Math.round(coveragePct)
+  const covered = totalPassive >= monthlyExpenses
+
+  const sources = [
+    rentalIncome > 0 && { icon: '🏠', label: 'Alquiler', monthly: rentalIncome },
+    interestIncome > 0 && { icon: '🏦', label: 'Intereses', monthly: interestIncome },
+  ].filter(Boolean) as { icon: string; label: string; monthly: number }[]
+
+  return (
+    <div className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
+      <p className="text-label font-semibold text-on-surface font-body mb-3">Renta pasiva mensual</p>
+
+      <div className="space-y-2 mb-3">
+        {sources.map(src => (
+          <div key={src.label} className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base">{src.icon}</span>
+              <span className="text-label text-on-surface/60 font-body">{src.label}</span>
+            </div>
+            <span className="text-label font-semibold text-on-surface font-body tabular-nums">
+              +{formatEur(Math.round(src.monthly))}/mes
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-surface-container-highest">
+          <span className="text-label font-semibold text-on-surface font-body">Total</span>
+          <span className="text-label font-semibold text-primary font-body tabular-nums">
+            {formatEur(Math.round(totalPassive))}/mes
+          </span>
+        </div>
+      </div>
+
+      {monthlyExpenses > 0 && (
+        <>
+          <div className="h-2 bg-surface-container-highest rounded-full overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${covered ? 'bg-primary' : 'bg-primary/60'}`}
+              style={{ width: `${coveragePct}%` }}
+            />
+          </div>
+          <p className={`text-label-sm font-body ${covered ? 'text-primary font-semibold' : 'text-on-surface/50'}`}>
+            {covered
+              ? 'Tu renta pasiva cubre todos tus gastos — independencia financiera real'
+              : `Cubre el ${coverageRounded}% de tus gastos mensuales`}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Debt Calculator ───────────────────────────────────────────────────────────
+
+function calcPayoff(
+  balance: number,
+  annualRate: number,
+  monthlyPayment: number
+): { months: number; totalInterest: number } | null {
+  if (balance <= 0 || monthlyPayment <= 0) return null
+  const r = annualRate / 100 / 12
+  if (r === 0) return { months: balance / monthlyPayment, totalInterest: 0 }
+  if (monthlyPayment <= balance * r) return null // payment doesn't even cover interest
+  const months = Math.log(monthlyPayment / (monthlyPayment - balance * r)) / Math.log(1 + r)
+  return { months, totalInterest: Math.max(0, monthlyPayment * months - balance) }
+}
+
+function DebtCalculator({ assets }: { assets: Asset[] }) {
+  const [extraPayment, setExtraPayment] = useState('100')
+
+  const debts = assets
+    .filter(a => a.category === 'debt' && a.value > 0)
+    .map(a => {
+      const meta = a.metadata as DebtMetadata | undefined
+      return {
+        id: a.id,
+        name: a.name,
+        balance: a.value,
+        annualRate: meta?.interestRate ?? 0,
+        monthlyPayment: meta?.monthlyPayment ?? 0,
+        debtType: meta?.debtType,
+      }
+    })
+    .filter(d => d.monthlyPayment > 0)
+
+  if (debts.length === 0) return null
+
+  const extra = Math.max(0, parseFloat(extraPayment) || 0)
+
+  const rows = debts.map(d => {
+    const base = calcPayoff(d.balance, d.annualRate, d.monthlyPayment)
+    const withExtra = extra > 0 ? calcPayoff(d.balance, d.annualRate, d.monthlyPayment + extra) : null
+    return { ...d, base, withExtra }
+  })
+
+  const totalInterestNow = rows.reduce((s, r) => s + (r.base?.totalInterest ?? 0), 0)
+  const totalInterestWithExtra = rows.reduce((s, r) => s + (r.withExtra?.totalInterest ?? r.base?.totalInterest ?? 0), 0)
+  const interestSaved = totalInterestNow - totalInterestWithExtra
+  const maxMonthsNow = Math.max(...rows.map(r => r.base?.months ?? 0))
+  const maxMonthsWithExtra = Math.max(...rows.map(r => (extra > 0 ? r.withExtra?.months : r.base?.months) ?? 0))
+  const monthsSaved = Math.round(maxMonthsNow - maxMonthsWithExtra)
+
+  return (
+    <div className="bg-surface-container-lowest rounded-xl p-4 shadow-soft space-y-4">
+      <p className="text-label font-semibold text-on-surface font-body">Calculadora de deudas</p>
+
+      {/* Per-debt rows */}
+      <div className="space-y-3">
+        {rows.map(row => (
+          <div key={row.id} className="bg-surface-container-low rounded-xl p-3">
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <p className="text-label font-semibold text-on-surface font-body leading-tight">{row.name}</p>
+              <span className="text-label-sm text-on-surface/50 font-body tabular-nums flex-shrink-0">
+                {formatEur(row.balance, true)}
+              </span>
+            </div>
+            {row.base ? (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                <span className="text-label-sm text-on-surface/50 font-body">Cuota actual</span>
+                <span className="text-label-sm font-semibold text-on-surface font-body tabular-nums text-right">
+                  {formatEur(row.monthlyPayment)}/mes
+                </span>
+                <span className="text-label-sm text-on-surface/50 font-body">Plazo estimado</span>
+                <span className="text-label-sm font-semibold text-on-surface font-body tabular-nums text-right">
+                  {Math.ceil(row.base.months)} meses
+                </span>
+                {row.annualRate > 0 && (
+                  <>
+                    <span className="text-label-sm text-on-surface/50 font-body">Intereses totales</span>
+                    <span className="text-label-sm font-semibold text-error font-body tabular-nums text-right">
+                      {formatEur(Math.round(row.base.totalInterest))}
+                    </span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-label-sm text-on-surface/40 font-body">Añade cuota mensual para calcular</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Extra payment input */}
+      <div className="flex items-center gap-3">
+        <span className="text-label text-on-surface/60 font-body flex-shrink-0">Pago extra</span>
+        <div className="relative flex-1">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={extraPayment}
+            onChange={e => setExtraPayment(e.target.value)}
+            className="w-full bg-surface-container-highest text-on-surface rounded-xl px-3 pr-14 py-2.5
+              font-body text-label text-right focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+            min="0"
+            step="50"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface/40 text-label font-body pointer-events-none">
+            €/mes
+          </span>
+        </div>
+      </div>
+
+      {/* Savings summary */}
+      {extra > 0 && interestSaved > 0 && (
+        <div className="bg-primary-container/40 rounded-xl px-4 py-3 space-y-1">
+          <p className="text-label text-on-surface/70 font-body leading-relaxed">
+            Añadiendo <strong>{formatEur(extra)}/mes</strong> extra ahorrarías{' '}
+            <strong className="text-primary">{formatEur(Math.round(interestSaved))}</strong> en intereses
+            {monthsSaved > 0 && (
+              <> y liquidarías tus deudas <strong className="text-primary">{monthsSaved} meses antes</strong></>
+            )}.
+          </p>
+        </div>
+      )}
+      {extra > 0 && interestSaved <= 0 && (
+        <div className="bg-surface-container-low rounded-xl px-4 py-3">
+          <p className="text-label-sm text-on-surface/50 font-body">
+            {monthsSaved > 0
+              ? `Liquidarías tus deudas ${monthsSaved} meses antes.`
+              : 'Sin intereses pendientes — cualquier pago extra reduce el plazo directamente.'}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WhatIfCalculator({ assets, monthlyExpenses }: { assets: Asset[]; monthlyExpenses: number }) {
   const [extraSavings, setExtraSavings] = useState('200')
 
@@ -537,7 +742,7 @@ function WhatIfCalculator({ assets, monthlyExpenses }: { assets: Asset[]; monthl
             inputMode="decimal"
             value={extraSavings}
             onChange={e => setExtraSavings(e.target.value)}
-            className="w-full bg-surface-container-highest text-on-surface rounded-xl px-3 py-2.5
+            className="w-full bg-surface-container-highest text-on-surface rounded-xl px-3 pr-14 py-2.5
               font-body text-label text-right focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
             min="0"
             step="50"
@@ -573,6 +778,15 @@ export function InsightsSheet({ isOpen, onClose, assets, monthlyExpenses, snapsh
   const hasAssets = assets.length > 0
   const autonomyMonths = getAutonomyMonths(assets, monthlyExpenses)
 
+  const hasPassiveIncome = assets.some(a => {
+    if (a.category === 'real_estate') return ((a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0) > 0
+    if (a.category === 'cash') return ((a.metadata as CashMetadata | undefined)?.interestRate ?? 0) > 0
+    return false
+  })
+  const hasDebtsWithPayment = assets.some(
+    a => a.category === 'debt' && a.value > 0 && ((a.metadata as DebtMetadata | undefined)?.monthlyPayment ?? 0) > 0
+  )
+
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title="Análisis">
       <div className="space-y-8 mt-2 pb-4">
@@ -603,6 +817,22 @@ export function InsightsSheet({ isOpen, onClose, assets, monthlyExpenses, snapsh
           <section>
             <SectionHeader>Ratios clave</SectionHeader>
             <KeyRatios assets={assets} monthlyExpenses={monthlyExpenses} />
+          </section>
+        )}
+
+        {/* Passive income */}
+        {hasAssets && hasPassiveIncome && (
+          <section>
+            <SectionHeader>Renta pasiva</SectionHeader>
+            <PassiveIncomePanel assets={assets} monthlyExpenses={monthlyExpenses} />
+          </section>
+        )}
+
+        {/* Debt calculator */}
+        {hasAssets && hasDebtsWithPayment && (
+          <section>
+            <SectionHeader>Deudas</SectionHeader>
+            <DebtCalculator assets={assets} />
           </section>
         )}
 
