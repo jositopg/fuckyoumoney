@@ -29,18 +29,21 @@ export interface Database {
           email: string | null
           name: string | null
           display_currency: DisplayCurrency
+          monthly_expenses: number | null
         }
         Insert: {
           id: string
           email?: string | null
           name?: string | null
           display_currency?: DisplayCurrency
+          monthly_expenses?: number | null
         }
         Update: {
           id?: string
           email?: string | null
           name?: string | null
           display_currency?: DisplayCurrency
+          monthly_expenses?: number | null
         }
         Relationships: []
       }
