@@ -133,13 +133,33 @@ export async function migrateLocalToSupabaseIfNeeded(
     userId
   )
 
+  // Atomic: if liabilities fail after assets insert, roll back those asset rows
+  // and do NOT set the migration flag (no half-state).
+  let insertedAssetIds: string[] = []
   if (assetInserts.length > 0) {
-    const { error } = await supabase.from('assets').insert(assetInserts)
+    const { data, error } = await supabase.from('assets').insert(assetInserts).select('id')
     if (error) throw error
+    insertedAssetIds = (data ?? []).map(row => row.id)
   }
   if (liabilityInserts.length > 0) {
     const { error } = await supabase.from('liabilities').insert(liabilityInserts)
-    if (error) throw error
+    if (error) {
+      if (insertedAssetIds.length > 0) {
+        const { error: cleanupError } = await supabase
+          .from('assets')
+          .delete()
+          .in('id', insertedAssetIds)
+          .eq('user_id', userId)
+        if (cleanupError) {
+          console.warn(
+            'migrateLocalToSupabaseIfNeeded: failed to roll back assets after liability insert error',
+            cleanupError.message
+          )
+        }
+      }
+      // Do not set migration flag — leave local data intact for retry
+      throw error
+    }
   }
 
   setMigrationFlag()
@@ -151,7 +171,7 @@ export async function createCloudAsset(asset: Asset, userId: string): Promise<As
   if (!supabase) throw new Error('Supabase no configurado')
 
   if (asset.category === 'real_estate') {
-    return asset // local-only — not persisted to cloud
+    return asset // local-only
   }
 
   if (asset.category === 'debt') {
@@ -254,15 +274,16 @@ export async function deleteCloudAsset(
   if (error) throw error
 }
 
+
 export async function getProfileMonthlyExpenses(userId: string): Promise<number | null> {
   if (!supabase) return null
   const { data, error } = await supabase
-    .from('profiles')
-    .select('monthly_expenses')
-    .eq('id', userId)
+    .from("profiles")
+    .select("monthly_expenses")
+    .eq("id", userId)
     .maybeSingle()
   if (error) {
-    console.warn('getProfileMonthlyExpenses failed', error.message)
+    console.warn("getProfileMonthlyExpenses failed", error.message)
     return null
   }
   if (data?.monthly_expenses == null) return null
@@ -270,11 +291,11 @@ export async function getProfileMonthlyExpenses(userId: string): Promise<number 
 }
 
 export async function saveProfileMonthlyExpenses(userId: string, monthlyExpenses: number): Promise<void> {
-  if (!supabase) throw new Error('Supabase no configurado')
+  if (!supabase) throw new Error("Supabase no configurado")
   const { error } = await supabase
-    .from('profiles')
+    .from("profiles")
     .update({ monthly_expenses: monthlyExpenses })
-    .eq('id', userId)
+    .eq("id", userId)
   if (error) throw error
 }
 
