@@ -18,7 +18,7 @@ describe('shouldTakeSnapshot', () => {
 
   it('returns false when last snapshot is in the same month', () => {
     const now = new Date()
-    const sameMonthDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const sameMonthDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
     const snapshots: WealthSnapshot[] = [
       { date: sameMonthDate, netWorth: 10000, liquidAssets: 5000 },
     ]
@@ -28,9 +28,7 @@ describe('shouldTakeSnapshot', () => {
   it('returns true when last snapshot is in a previous month', () => {
     const lastMonth = new Date()
     lastMonth.setMonth(lastMonth.getMonth() - 1)
-    const lastMonthDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1)
-      .toISOString()
-      .split('T')[0]
+    const lastMonthDate = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
     const snapshots: WealthSnapshot[] = [
       { date: lastMonthDate, netWorth: 10000, liquidAssets: 5000 },
     ]

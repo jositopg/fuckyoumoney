@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { lazy, Suspense } from 'react'
-import { Plus, Settings } from 'lucide-react'
+import { MessageCircle, Plus, Settings } from 'lucide-react'
 import type { Asset, AppData, StocksMetadata, CryptoMetadata, CommodityMetadata } from './types'
 import { CATEGORY_ORDER } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
@@ -8,6 +8,8 @@ import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
 import { AutonomyHero } from './components/AutonomyHero'
+import { AllocationPanel } from './components/AllocationPanel'
+import { FincaSyncBanner } from './components/FincaSyncBanner'
 import { MilestoneCard } from './components/MilestoneCard'
 import { PriorityCard } from './components/PriorityCard'
 import { CategorySection } from './components/CategorySection'
@@ -30,6 +32,7 @@ import {
   saveProfileMonthlyExpenses,
   updateCloudAsset,
 } from './lib/supabaseData'
+import { replaceFincaAssets, syncFincaFromApi } from './lib/fincaSync'
 
 const AssetForm = lazy(() => import('./components/AssetForm').then(m => ({ default: m.AssetForm })))
 const SettingsSheet = lazy(() =>
@@ -40,6 +43,9 @@ const InsightsSheet = lazy(() =>
 )
 const PhilosophySheet = lazy(() =>
   import('./components/PhilosophySheet').then(m => ({ default: m.PhilosophySheet }))
+)
+const AiChatSheet = lazy(() =>
+  import('./components/AiChatSheet').then(m => ({ default: m.AiChatSheet }))
 )
 
 const DEFAULT_DATA: AppData = {
@@ -62,10 +68,14 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isPhilosophyOpen, setIsPhilosophyOpen] = useState(false)
   const [isInsightsOpen, setIsInsightsOpen] = useState(false)
+  const [isAiOpen, setIsAiOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [showExportReminder, setShowExportReminder] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [cloudReady, setCloudReady] = useState(false)
+  const [fincaBusy, setFincaBusy] = useState(false)
+  const [fincaError, setFincaError] = useState<string | null>(null)
+  const [fincaSyncedAt, setFincaSyncedAt] = useState<string | null>(null)
   const isOnline = useOnlineStatus()
   const [isUpdating, setIsUpdating] = useState(false)
   const persistenceStatus = usePersistentStorage()
@@ -223,7 +233,12 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       }
 
-      if (loggedIn && updated.category !== 'real_estate') {
+      if (editAsset.readOnly || editAsset.source === 'finca') {
+        setEditAsset(null)
+        return
+      }
+
+      if (loggedIn && !updated.readOnly) {
         try {
           const saved = await updateCloudAsset(updated, auth.user!.id)
           setData(prev => ({
@@ -256,7 +271,7 @@ export default function App() {
       updatedAt: now,
     }
 
-    if (loggedIn && newAsset.category !== 'real_estate') {
+    if (loggedIn) {
       try {
         const saved = await createCloudAsset(newAsset, auth.user!.id)
         setData(prev => ({ ...prev, assets: [...prev.assets, saved] }))
@@ -276,7 +291,12 @@ export default function App() {
     const target = editAsset
     const loggedIn = Boolean(auth.user && cloudReady)
 
-    if (loggedIn && target.category !== 'real_estate') {
+    if (target.readOnly || target.source === 'finca') {
+      setEditAsset(null)
+      return
+    }
+
+    if (loggedIn) {
       try {
         await deleteCloudAsset(target, auth.user!.id)
         setSyncError(null)
@@ -317,6 +337,31 @@ export default function App() {
     setData(prev => ({ ...prev, hasSeenOnboarding: true }))
   }
 
+  async function handleSyncFinca() {
+    if (!auth.user || !cloudReady) {
+      setFincaError('Inicia sesión para sincronizar Finca')
+      return
+    }
+    setFincaBusy(true)
+    setFincaError(null)
+    try {
+      const { assets: fincaAssets } = await syncFincaFromApi()
+      setData(prev => ({ ...prev, assets: replaceFincaAssets(prev.assets, fincaAssets) }))
+      setFincaSyncedAt(new Date().toISOString())
+      setSyncError(null)
+    } catch (err) {
+      setFincaError(err instanceof Error ? err.message : 'Error al sincronizar Finca')
+    } finally {
+      setFincaBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!auth.user || !cloudReady) return
+    void handleSyncFinca()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user?.id, cloudReady])
+
   if (!data.hasSeenOnboarding) {
     return <OnboardingScreen onStart={handleOnboardingDone} />
   }
@@ -335,18 +380,29 @@ export default function App() {
         <span className="text-label font-display font-semibold text-on-surface/40 tracking-tight">
           F*ck You Money
         </span>
-        <button
-          onClick={() => setIsSettingsOpen(true)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center
-            bg-surface-container-low text-on-surface/50
-            hover:bg-surface-container-highest hover:text-on-surface transition-all"
-          aria-label="Ajustes"
-        >
-          <Settings size={17} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAiOpen(true)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center
+              bg-surface-container-low text-on-surface/50
+              hover:bg-surface-container-highest hover:text-on-surface transition-all"
+            aria-label="Analista IA"
+          >
+            <MessageCircle size={17} />
+          </button>
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center
+              bg-surface-container-low text-on-surface/50
+              hover:bg-surface-container-highest hover:text-on-surface transition-all"
+            aria-label="Ajustes"
+          >
+            <Settings size={17} />
+          </button>
+        </div>
       </header>
 
-      <main className="px-5 pb-28 max-w-lg mx-auto">
+      <main className="px-5 pb-28 max-w-lg mx-auto lg:max-w-3xl">
         {syncError && (
           <div className="mb-3 rounded-xl bg-error/10 text-error px-4 py-3 text-label font-body">
             Sync: {syncError}
@@ -359,6 +415,18 @@ export default function App() {
           snapshots={data.snapshots}
           onQuoteTap={() => setIsPhilosophyOpen(true)}
         />
+
+        {auth.user && (
+          <FincaSyncBanner
+            lastSync={fincaSyncedAt}
+            busy={fincaBusy}
+            error={fincaError}
+            propertyCount={data.assets.filter(a => a.source === 'finca').length}
+            onSync={() => void handleSyncFinca()}
+          />
+        )}
+
+        {hasAnyAssets && <AllocationPanel assets={data.assets} />}
 
         {hasSymbolAssets && (
           <PriceUpdateBanner
@@ -491,6 +559,12 @@ export default function App() {
           assets={data.assets}
           monthlyExpenses={data.monthlyExpenses}
           snapshots={data.snapshots}
+        />
+
+        <AiChatSheet
+          isOpen={isAiOpen}
+          onClose={() => setIsAiOpen(false)}
+          loggedIn={Boolean(auth.user && cloudReady)}
         />
       </Suspense>
     </div>

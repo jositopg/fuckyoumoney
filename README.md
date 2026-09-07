@@ -19,7 +19,9 @@ Set both in Vercel Project Settings -> Environment Variables for Production and 
 
 ## Sync
 
-Logged-in: CRUD assets/liabilities, one-shot localStorage migration, real_estate omitted (local only), no price_cache writes, light profile upsert on login.
+Logged-in: CRUD assets/liabilities (inmuebles de Finca son solo lectura),
+migración localStorage one-shot, sync `POST /api/sync-finca`, chat `POST /api/ai`.
+Arquitectura viva: `CLAUDE.md`. Continuación de sesión: `HANDOFF.md`.
 
 ## Scripts
 

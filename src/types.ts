@@ -36,6 +36,12 @@ export interface RealEstateMetadata {
   propertyType?: 'vivienda_habitual' | 'alquiler' | 'local' | 'garaje' | 'terreno' | 'otro'
   purchasePrice?: number   // historical purchase price
   monthlyRent?: number     // monthly rental income (if rented)
+  status?: string          // finca estado
+  ownershipPct?: number
+  valueSource?: 'mercado' | 'catastro'
+  municipio?: string
+  fincaId?: string
+  ttmNetCashflow?: number
 }
 
 export interface VehicleMetadata {
@@ -74,6 +80,8 @@ export type AssetMetadata =
   | DebtMetadata
   | CommodityMetadata
 
+export type AssetSource = 'manual' | 'finca' | 'market'
+
 export interface Asset {
   id: string
   category: AssetCategory
@@ -82,6 +90,8 @@ export interface Asset {
   symbol?: string          // ticker for auto price updates (stocks/crypto)
   notes?: string
   metadata?: AssetMetadata
+  source?: AssetSource
+  readOnly?: boolean
   createdAt: string
   updatedAt: string
 }

@@ -6,9 +6,11 @@ import type {
   CryptoMetadata,
   DebtMetadata,
   PensionMetadata,
+  RealEstateMetadata,
   StocksMetadata,
   VehicleMetadata,
 } from '../types'
+import { packNotes, unpackNotes } from './fymMeta'
 import type {
   AssetInsert,
   AssetRow,
@@ -18,7 +20,7 @@ import type {
   LiabilityType,
 } from '../types/database'
 
-/** Categories that sync to Supabase. real_estate is omitted (local-only, no cloud CRUD). */
+/** Categories that sync to Supabase. real_estate now syncs (Finca snapshot + manual). */
 export const SYNCABLE_CATEGORIES: AssetCategory[] = [
   'cash',
   'stocks',
@@ -26,6 +28,7 @@ export const SYNCABLE_CATEGORIES: AssetCategory[] = [
   'commodities',
   'pension',
   'vehicles',
+  'real_estate',
   'debt',
 ]
 
@@ -89,7 +92,7 @@ function reverseStockType(type: AssetType): StocksMetadata['assetType'] {
 }
 
 /**
- * Map a local Asset to a Supabase assets Insert (excludes debt & real_estate).
+ * Map a local Asset to a Supabase assets Insert (excludes debt).
  * Returns null if the category should not be inserted into assets.
  */
 export function localAssetToDbInsert(
@@ -97,7 +100,7 @@ export function localAssetToDbInsert(
   userId: string,
   idOverride?: string
 ): AssetInsert | null {
-  if (asset.category === 'debt' || asset.category === 'real_estate') return null
+  if (asset.category === 'debt') return null
 
   const id = idOverride ?? (isUuid(asset.id) ? asset.id : crypto.randomUUID())
   const base = {
@@ -207,6 +210,33 @@ export function localAssetToDbInsert(
         ticker: null,
         ticker_source: null,
         purchase_price: null,
+      }
+    }
+    case 'real_estate': {
+      const meta = asset.metadata as RealEstateMetadata | undefined
+      const fromFinca = asset.source === 'finca' || Boolean(meta?.fincaId)
+      return {
+        ...base,
+        type: 'real_estate',
+        quantity: 1,
+        manual_value: asset.value,
+        purchase_price: meta?.purchasePrice ?? null,
+        is_liquid: false,
+        ticker: null,
+        ticker_source: null,
+        institution: fromFinca ? 'finca' : null,
+        country: meta?.municipio ?? null,
+        notes: packNotes(asset.notes, {
+          source: fromFinca ? 'finca' : 'manual',
+          propertyType: meta?.propertyType,
+          monthlyRent: meta?.monthlyRent,
+          status: meta?.status,
+          ownershipPct: meta?.ownershipPct,
+          valueSource: meta?.valueSource,
+          municipio: meta?.municipio,
+          fincaId: meta?.fincaId,
+          ttmNetCashflow: meta?.ttmNetCashflow,
+        }),
       }
     }
     default:
@@ -350,8 +380,33 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         createdAt: created,
         updatedAt: now,
       }
+    case 'real_estate': {
+      const { human, extra } = unpackNotes(row.notes)
+      const fromFinca = row.institution === 'finca' || extra.source === 'finca'
+      return {
+        id: row.id,
+        category: 'real_estate',
+        name: row.name,
+        value,
+        notes: human,
+        metadata: {
+          propertyType: (extra.propertyType as RealEstateMetadata['propertyType']) || 'alquiler',
+          monthlyRent: typeof extra.monthlyRent === 'number' ? extra.monthlyRent : undefined,
+          purchasePrice: row.purchase_price ?? undefined,
+          status: typeof extra.status === 'string' ? extra.status : undefined,
+          ownershipPct: typeof extra.ownershipPct === 'number' ? extra.ownershipPct : undefined,
+          valueSource: extra.valueSource === 'mercado' || extra.valueSource === 'catastro' ? extra.valueSource : undefined,
+          municipio: (typeof extra.municipio === 'string' ? extra.municipio : row.country) ?? undefined,
+          fincaId: typeof extra.fincaId === 'string' ? extra.fincaId : fromFinca ? row.id : undefined,
+          ttmNetCashflow: typeof extra.ttmNetCashflow === 'number' ? extra.ttmNetCashflow : undefined,
+        } satisfies RealEstateMetadata,
+        source: fromFinca ? 'finca' : 'manual',
+        readOnly: fromFinca,
+        createdAt: created,
+        updatedAt: now,
+      }
+    }
     case 'other':
-    case 'real_estate':
     default: {
       // Vehicles (and misc) map to type=other
       const vehicleTypeMatch = row.notes?.match(/tipo:(\w+)/)
@@ -402,7 +457,8 @@ export function dbLiabilityToLocal(row: LiabilityRow): Asset {
 
 /**
  * Split local assets into rows ready for migration inserts.
- * Omits real_estate. Returns assets inserts + liability inserts + id map (localId → newUuid).
+ * Manual real_estate now syncs. Finca-sourced rows are omitted here (the
+ * sync-finca endpoint upserts them with stable Finca UUIDs).
  */
 export function prepareMigrationPayload(
   assets: Asset[],
@@ -419,7 +475,7 @@ export function prepareMigrationPayload(
   const omittedRealEstate: Asset[] = []
 
   for (const asset of assets) {
-    if (asset.category === 'real_estate') {
+    if (asset.source === 'finca' || asset.readOnly) {
       omittedRealEstate.push(asset)
       continue
     }
@@ -439,11 +495,21 @@ export function prepareMigrationPayload(
   return { assetInserts, liabilityInserts, idMap, omittedRealEstate }
 }
 
-/** Merge cloud-mapped assets with local-only real_estate slice. */
+/**
+ * Merge cloud rows with leftover local real_estate that is NOT from Finca
+ * and not already present in the cloud set.
+ */
 export function mergeCloudWithLocalRealEstate(
   cloudAssets: Asset[],
   localAssets: Asset[]
 ): Asset[] {
-  const localOnly = localAssets.filter(a => a.category === 'real_estate')
+  const cloudIds = new Set(cloudAssets.map(a => a.id))
+  const hasFincaCloud = cloudAssets.some(a => a.source === 'finca')
+  const localOnly = localAssets.filter(a => {
+    if (a.category !== 'real_estate') return false
+    if (cloudIds.has(a.id)) return false
+    if (hasFincaCloud && (a.source === 'finca' || a.readOnly)) return false
+    return true
+  })
   return [...cloudAssets, ...localOnly]
 }

@@ -95,7 +95,8 @@ export function setMigrationFlag(): void {
 
 /**
  * One-shot local → Supabase migration.
- * Skips if flag set or cloud already has rows. Omits real_estate.
+ * Skips if flag set or cloud already has rows.
+ * Finca-sourced real_estate is omitted (sync-finca upserts those).
  * Idempotent: safe to call repeatedly.
  */
 export async function migrateLocalToSupabaseIfNeeded(
@@ -118,12 +119,12 @@ export async function migrateLocalToSupabaseIfNeeded(
     return { migrated: false, omittedRealEstate: [], cloudAssets }
   }
 
-  const syncable = localAssets.filter(a => a.category !== 'real_estate')
+  const syncable = localAssets.filter(a => a.source !== 'finca' && !a.readOnly)
   if (syncable.length === 0) {
     setMigrationFlag()
     return {
       migrated: false,
-      omittedRealEstate: localAssets.filter(a => a.category === 'real_estate'),
+      omittedRealEstate: localAssets.filter(a => a.source === 'finca' || a.readOnly),
       cloudAssets: [],
     }
   }
@@ -170,8 +171,8 @@ export async function migrateLocalToSupabaseIfNeeded(
 export async function createCloudAsset(asset: Asset, userId: string): Promise<Asset> {
   if (!supabase) throw new Error('Supabase no configurado')
 
-  if (asset.category === 'real_estate') {
-    return asset // local-only
+  if (asset.readOnly || asset.source === 'finca') {
+    return asset
   }
 
   if (asset.category === 'debt') {
@@ -192,7 +193,7 @@ export async function createCloudAsset(asset: Asset, userId: string): Promise<As
 export async function updateCloudAsset(asset: Asset, userId: string): Promise<Asset> {
   if (!supabase) throw new Error('Supabase no configurado')
 
-  if (asset.category === 'real_estate') {
+  if (asset.readOnly || asset.source === 'finca') {
     return asset
   }
 
@@ -254,7 +255,7 @@ export async function deleteCloudAsset(
   userId: string
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase no configurado')
-  if (asset.category === 'real_estate') return
+  if (asset.readOnly || asset.source === 'finca') return
 
   if (asset.category === 'debt') {
     const { error } = await supabase

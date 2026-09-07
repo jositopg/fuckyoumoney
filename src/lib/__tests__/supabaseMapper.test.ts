@@ -28,6 +28,8 @@ function baseAsset(partial: Partial<Asset> & Pick<Asset, 'category' | 'name' | '
     symbol: partial.symbol,
     notes: partial.notes,
     metadata: partial.metadata,
+    source: partial.source,
+    readOnly: partial.readOnly,
     createdAt: partial.createdAt ?? '2024-01-01T00:00:00.000Z',
     updatedAt: partial.updatedAt ?? '2024-01-02T00:00:00.000Z',
   }
@@ -175,12 +177,27 @@ describe('supabaseMapper local → DB', () => {
     expect(row?.notes).toContain('año:2018')
   })
 
-  it('returns null for real_estate (omit from DB)', () => {
+  it('maps real_estate to type=real_estate with packed notes', () => {
     const row = localAssetToDbInsert(
-      baseAsset({ category: 'real_estate', name: 'Piso', value: 200000 }),
-      USER
+      baseAsset({
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        category: 'real_estate',
+        name: 'Piso',
+        value: 200000,
+        source: 'finca',
+        readOnly: true,
+        metadata: { propertyType: 'alquiler', monthlyRent: 750, fincaId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      }),
+      USER,
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     )
-    expect(row).toBeNull()
+    expect(row).toMatchObject({
+      type: 'real_estate',
+      manual_value: 200000,
+      institution: 'finca',
+      is_liquid: false,
+    })
+    expect(row?.notes).toContain('FYM1:')
   })
 
   it('maps debt to liabilities with debtType mapping', () => {
@@ -263,6 +280,34 @@ describe('supabaseMapper DB → local', () => {
     expect(asset.metadata).toMatchObject({ accountType: 'corriente' })
   })
 
+  it('converts real_estate row to read-only finca asset, not vehicles', () => {
+    const row: AssetRow = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      user_id: USER,
+      name: 'Piso Finca',
+      type: 'real_estate',
+      ticker: null,
+      ticker_source: null,
+      quantity: 1,
+      purchase_price: null,
+      purchase_date: null,
+      manual_value: 180000,
+      currency: 'EUR',
+      institution: 'finca',
+      country: 'Las Palmas',
+      notes: 'FYM1:{"source":"finca","monthlyRent":700,"propertyType":"alquiler"}',
+      is_liquid: false,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-02T00:00:00.000Z',
+    }
+    const asset = dbAssetToLocal(row)
+    expect(asset.category).toBe('real_estate')
+    expect(asset.source).toBe('finca')
+    expect(asset.readOnly).toBe(true)
+    expect(asset.value).toBe(180000)
+    expect((asset.metadata as { monthlyRent?: number }).monthlyRent).toBe(700)
+  })
+
   it('converts liability to debt Asset', () => {
     const row: LiabilityRow = {
       id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -291,7 +336,7 @@ describe('supabaseMapper DB → local', () => {
 })
 
 describe('prepareMigrationPayload', () => {
-  it('omits real_estate and maps the rest idempotently by stable uuid when provided', () => {
+  it('syncs manual real_estate and omits finca-sourced rows from local migration', () => {
     const assets: Asset[] = [
       baseAsset({
         id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -307,22 +352,29 @@ describe('prepareMigrationPayload', () => {
         metadata: { debtType: 'otro' },
       }),
       baseAsset({
-        id: 'local-re',
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
         category: 'real_estate',
-        name: 'Piso',
+        name: 'Piso manual',
         value: 200000,
+      }),
+      baseAsset({
+        id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+        category: 'real_estate',
+        name: 'Piso Finca',
+        value: 180000,
+        source: 'finca',
+        readOnly: true,
       }),
     ]
 
     const first = prepareMigrationPayload(assets, USER)
-    const second = prepareMigrationPayload(assets, USER)
 
     expect(first.omittedRealEstate).toHaveLength(1)
-    expect(first.assetInserts).toHaveLength(1)
+    expect(first.omittedRealEstate[0].name).toBe('Piso Finca')
+    expect(first.assetInserts).toHaveLength(2)
     expect(first.liabilityInserts).toHaveLength(1)
+    expect(first.assetInserts.map(r => r.type).sort()).toEqual(['cash', 'real_estate'])
     expect(first.assetInserts[0].id).toBe('cccccccc-cccc-4ccc-8ccc-cccccccccccc')
-    expect(second.assetInserts[0].id).toBe(first.assetInserts[0].id)
-    expect(second.liabilityInserts[0].id).toBe(first.liabilityInserts[0].id)
   })
 
   it('merges cloud assets with local-only real_estate', () => {

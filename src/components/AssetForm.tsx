@@ -498,6 +498,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       title={editAsset ? 'Editar' : 'Añadir activo'}
     >
       <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+        {editAsset?.readOnly && (
+          <div className="rounded-xl bg-primary-container/30 px-4 py-3 text-label font-body text-on-surface/80">
+            Gestionado en Finca. Aquí es solo lectura — sincroniza para actualizar valor y renta.
+          </div>
+        )}
+
+        <fieldset disabled={Boolean(editAsset?.readOnly)} className="space-y-5 disabled:opacity-70">
 
         {/* Category selector */}
         <Field label="Tipo">
@@ -1168,7 +1175,16 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
             className={inputClass() + ' resize-none'} />
         </Field>
 
+        </fieldset>
+
         {/* Actions */}
+        {editAsset?.readOnly ? (
+          <button type="button" onClick={onClose}
+            className="w-full bg-surface-container-low text-on-surface rounded-xl py-4 font-display font-semibold
+              text-body">
+            Cerrar
+          </button>
+        ) : (
         <div className={`flex gap-3 pt-2 ${editAsset ? 'flex-col' : ''}`}>
           <button type="submit"
             className="flex-1 bg-primary text-on-primary rounded-xl py-4 font-display font-semibold
@@ -1185,6 +1201,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
             </button>
           )}
         </div>
+        )}
       </form>
     </BottomSheet>
   )
