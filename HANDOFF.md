@@ -45,8 +45,9 @@ Marca cada ítem al terminarlo.
 - [x] Tests mapper + wealthBrief + snapshot mapping (113 tests)
 - [x] `FINCA_DATABASE_URL` en Vercel (Production/Preview/Development)
 - [ ] Aplicar `001_wealth_os.sql` cuando exista DATABASE_URL de FYM (`~/.fuckyoumoney-db.env`)
-- [ ] Merge a `main` + confirmar deploy Vercel + login real + sync Finca + una pregunta a la IA
-- [ ] `XAI_API_KEY` en Vercel (si Gateway OIDC no basta)
+- [x] Merge a `main` + deploy Vercel READY (`f69050d`, fuckyoumoney.vercel.app)
+- [ ] Jose: login real + sync Finca + una pregunta a la IA (no se puede OAuth/password desde el agente)
+- [x] `AI_GATEWAY_API_KEY` en Vercel (Gateway, presupuesto 5 USD/mes, clave `fuckyoumoney`). Redeploy listo. Preferible a futuro: `XAI_API_KEY` nativa.
 
 ## Cómo sigue mañana (orden)
 
