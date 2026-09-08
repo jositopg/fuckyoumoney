@@ -1,31 +1,39 @@
-# Base de datos (para Grok en terminal)
+# Base de datos — contrato para cualquier IA
 
-No hay chat IA dentro de la app. El patrimonio se consulta aquí.
+Fuck You Money no tiene chat. El patrimonio se analiza **en SQL**.
 
-```bash
-# Briefing JSON (Finca siempre; FYM si existe ~/.fuckyoumoney-db.env)
-cd ~/Proyectos/fuck-you-money && npm run wealth
+Proyecto Supabase: `jwcrrnevvtxaycsqjmem`  
+App: https://fuckyoumoney.vercel.app
+
+## Si tienes acceso a este Postgres
+
+```sql
+SELECT * FROM ai_guide ORDER BY sort;   -- instrucciones (también con anon key)
+SELECT patrimonio_ia();                 -- briefing JSON (login o service_role)
+SELECT * FROM v_net_worth;
+SELECT * FROM v_positions;
+SELECT * FROM v_allocation;
 ```
 
-## Proyectos
+No inventes cifras. EUR. Inmuebles `source=finca` son solo lectura (la app Finca los opera). Hipotecas = `v_positions` donde `kind=liability` y `class=mortgage`.
 
-| App | Postgres | Env local |
-|---|---|---|
-| Finca (inmuebles, ops) | `emkihlljnhykevlehprh` | `~/.finca-db.env` |
-| FYM (balance consolidado) | `jwcrrnevvtxaycsqjmem` | `~/.fuckyoumoney-db.env` |
+## Si estás en la terminal de Jose
 
-## Qué leer
+```bash
+# Inmuebles (Finca) — ya funciona
+node ~/Proyectos/fuck-you-money/scripts/dump-wealth.mjs
 
-1. `npm run wealth` — un JSON con totales y posiciones.
-2. Si FYM ya tiene la migración: `SELECT patrimonio_ia();`
-3. Inmuebles crudos: en Finca, `SELECT patrimonio_macro_snapshot();`
+# Patrimonio completo — cuando exista ~/.fuckyoumoney-db.env
+node ~/Proyectos/fuck-you-money/scripts/run-sql.mjs "SELECT patrimonio_ia();"
+```
 
-## Convenciones
+URI de FYM: Dashboard → Settings → Database → URI, guardar en `~/.fuckyoumoney-db.env` como `DATABASE_URL=...` (chmod 600). Aplicar schema:
 
-- EUR. `kind=asset|liability`.
-- Inmuebles `institution=finca` o `source=finca`: solo lectura. Gestión en Finca.
-- Hipotecas (principal): `liabilities.type = mortgage`. Finca no lo tiene.
-- Autonomía = (líquido − deudas) / `profiles.monthly_expenses`. El ladrillo no entra.
-- Metadata extra en `assets.notes` como `FYM1:{json}` hasta aplicar `001_wealth_os.sql`.
+```bash
+cd ~/Proyectos/fuck-you-money
+node scripts/run-sql.mjs supabase/migrations/001_wealth_os.sql
+```
 
-No inventar cifras que no estén en el JSON/SQL.
+## RLS
+
+`ai_guide` es legible con anon (sin cifras). El resto exige el usuario de Jose (`authenticated`) o `service_role` / `postgres`.

@@ -66,6 +66,18 @@ async function main() {
   }
 
   if (fym.DATABASE_URL) {
+    try {
+      const brief = await query(fym.DATABASE_URL, 'SELECT public.patrimonio_ia() AS snap')
+      if (brief[0]?.snap) {
+        out.fuckyoumoney = brief[0].snap
+        out.sources.fuckyoumoney = true
+      }
+    } catch {
+      // migración 001 aún no aplicada: leer tablas crudas
+    }
+  }
+
+  if (fym.DATABASE_URL && !out.sources.fuckyoumoney) {
     const assets = await query(
       fym.DATABASE_URL,
       `SELECT id, name, type, quantity, purchase_price, manual_value, is_liquid,

@@ -23,15 +23,22 @@ React 19 + TypeScript + Vite + Tailwind. PWA. Auth: Supabase email/password. DB:
 | Finca | Operación inmobiliaria. Publica `patrimonio_macro_snapshot()`. |
 | FYM | Balance consolidado. Inmuebles **read-only** (`source=finca`). Resto de clases se editan aquí. Hipotecas (principal) viven aquí. |
 
-## Grok en terminal (no en la app)
+## Grok u otra IA (no en la app)
 
-La IA no está embebida. Para hablar del patrimonio:
+No hay chat embebido. Cualquier IA con acceso a este Postgres:
 
-```bash
-cd ~/Proyectos/fuck-you-money && npm run wealth
+```sql
+SELECT * FROM ai_guide ORDER BY sort;
+SELECT patrimonio_ia();
 ```
 
-Lee `~/.finca-db.env` (inmuebles) y `~/.fuckyoumoney-db.env` (resto) si existe. Convención completa: `supabase/README.md`.
+En la terminal de Jose:
+
+```bash
+cd ~/Proyectos/fuck-you-money && node scripts/dump-wealth.mjs
+```
+
+Contrato: `supabase/README.md`. Migración: `supabase/migrations/001_wealth_os.sql`.
 
 ## Modelo local (`src/types.ts`)
 

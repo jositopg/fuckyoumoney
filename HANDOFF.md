@@ -34,7 +34,8 @@
 - [x] Sync FYM ← Finca, mapper real_estate, UI asignación + read-only
 - [x] Quitar chat IA de la app (2026-09-08)
 - [x] `scripts/dump-wealth.mjs` / `npm run wealth`
-- [ ] `~/.fuckyoumoney-db.env` + aplicar `001_wealth_os.sql`
+- [x] Migración `001_wealth_os.sql` autoexplicativa (`ai_guide`, `patrimonio_ia()`, vistas, comentarios)
+- [ ] `~/.fuckyoumoney-db.env` + **aplicar** `001_wealth_os.sql` (hace falta la URI de Postgres FYM)
 - [ ] Jose: login en fuckyoumoney.vercel.app y sync Finca
 
 ## Cómo consultar el patrimonio
