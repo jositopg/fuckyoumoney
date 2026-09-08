@@ -171,7 +171,7 @@ describe('supabaseMapper local → DB', () => {
       USER,
       '88888888-8888-4888-8888-888888888888'
     )
-    expect(row?.type).toBe('other')
+    expect(row?.type).toBe('vehicle')
     expect(row?.manual_value).toBe(9000)
     expect(row?.notes).toContain('tipo:coche')
     expect(row?.notes).toContain('año:2018')

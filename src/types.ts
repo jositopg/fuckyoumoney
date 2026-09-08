@@ -7,6 +7,9 @@ export type AssetCategory =
   | 'pension'
   | 'debt'
   | 'commodities'
+  | 'business'
+  | 'receivable'
+  | 'other'
 
 // Per-category metadata — all fields optional for backwards compatibility
 export interface CashMetadata {
@@ -70,6 +73,14 @@ export interface CommodityMetadata {
   purchasePrice?: number     // purchase price per unit in EUR (for P&L)
 }
 
+export interface BusinessMetadata {
+  ownershipPct?: number
+}
+
+export interface ReceivableMetadata {
+  counterparty?: string
+}
+
 export type AssetMetadata =
   | CashMetadata
   | StocksMetadata
@@ -79,6 +90,8 @@ export type AssetMetadata =
   | PensionMetadata
   | DebtMetadata
   | CommodityMetadata
+  | BusinessMetadata
+  | ReceivableMetadata
 
 export type AssetSource = 'manual' | 'finca' | 'market'
 
@@ -113,13 +126,16 @@ export interface AppData {
 }
 
 export const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  cash: 'Efectivo / cuentas',
-  stocks: 'Acciones, ETFs, fondos',
-  crypto: 'Criptomonedas',
-  commodities: 'Metales preciosos',
+  cash: 'Cuentas',
+  stocks: 'Fondos y acciones',
+  crypto: 'Cripto',
+  commodities: 'Metales',
   real_estate: 'Inmuebles',
   vehicles: 'Vehículos',
-  pension: 'Pensiones y PIAS',
+  pension: 'Pensiones',
+  business: 'Negocios',
+  receivable: 'Me deben',
+  other: 'Otros',
   debt: 'Deudas',
 }
 
@@ -127,11 +143,26 @@ export const CATEGORY_ORDER: AssetCategory[] = [
   'cash',
   'stocks',
   'crypto',
-  'commodities',
   'real_estate',
-  'vehicles',
   'pension',
+  'commodities',
+  'vehicles',
+  'business',
+  'receivable',
+  'other',
   'debt',
+]
+
+export const POSITION_GROUPS: { id: string; label: string; categories: AssetCategory[] }[] = [
+  { id: 'liquid', label: 'Liquidez', categories: ['cash'] },
+  { id: 'invest', label: 'Inversiones', categories: ['stocks', 'crypto'] },
+  { id: 'real_estate', label: 'Inmuebles', categories: ['real_estate'] },
+  {
+    id: 'other',
+    label: 'Otros',
+    categories: ['pension', 'commodities', 'vehicles', 'business', 'receivable', 'other'],
+  },
+  { id: 'debt', label: 'Deudas', categories: ['debt'] },
 ]
 
 export const LIQUID_CATEGORIES: AssetCategory[] = ['cash', 'stocks', 'crypto']

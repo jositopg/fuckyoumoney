@@ -2,23 +2,19 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { lazy, Suspense } from 'react'
 import { Plus, Settings } from 'lucide-react'
 import type { Asset, AppData, StocksMetadata, CryptoMetadata, CommodityMetadata } from './types'
-import { CATEGORY_ORDER } from './types'
+import { CATEGORY_ORDER, POSITION_GROUPS } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
-import { AutonomyHero } from './components/AutonomyHero'
+import { NetWorthHero } from './components/NetWorthHero'
 import { AllocationPanel } from './components/AllocationPanel'
 import { FincaSyncBanner } from './components/FincaSyncBanner'
-import { MilestoneCard } from './components/MilestoneCard'
-import { PriorityCard } from './components/PriorityCard'
 import { CategorySection } from './components/CategorySection'
-import { MetricsSection } from './components/MetricsSection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
 import { updateAssetPrices, applyDailyInterest } from './utils/priceUpdater'
-import { getAutonomyMonths } from './utils/calculations'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
@@ -41,9 +37,7 @@ const SettingsSheet = lazy(() =>
 const InsightsSheet = lazy(() =>
   import('./components/InsightsSheet').then(m => ({ default: m.InsightsSheet }))
 )
-const PhilosophySheet = lazy(() =>
-  import('./components/PhilosophySheet').then(m => ({ default: m.PhilosophySheet }))
-)
+
 
 const DEFAULT_DATA: AppData = {
   assets: [],
@@ -63,7 +57,6 @@ export default function App() {
   const [data, setData] = useLocalStorage<AppData>('fym_data', DEFAULT_DATA, migrateData)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isPhilosophyOpen, setIsPhilosophyOpen] = useState(false)
   const [isInsightsOpen, setIsInsightsOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [showExportReminder, setShowExportReminder] = useState(false)
@@ -209,7 +202,6 @@ export default function App() {
   )
 
   const hasAnyAssets = data.assets.length > 0
-  const autonomyMonths = getAutonomyMonths(data.assets, data.monthlyExpenses)
   const hasSymbolAssets = data.assets.some(a => {
     if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
     if (a.category === 'commodities') {
@@ -374,7 +366,7 @@ export default function App() {
     <div className="min-h-dvh bg-surface font-body text-on-surface">
       <header className="sticky top-0 z-30 bg-surface/90 backdrop-blur-sm px-5 py-3 flex items-center justify-between">
         <span className="text-label font-display font-semibold text-on-surface/40 tracking-tight">
-          F*ck You Money
+          Patrimonio
         </span>
         <button
           onClick={() => setIsSettingsOpen(true)}
@@ -394,12 +386,9 @@ export default function App() {
           </div>
         )}
 
-        <AutonomyHero
-          assets={data.assets}
-          monthlyExpenses={data.monthlyExpenses}
-          snapshots={data.snapshots}
-          onQuoteTap={() => setIsPhilosophyOpen(true)}
-        />
+        <NetWorthHero assets={data.assets} snapshots={data.snapshots} />
+
+        {hasAnyAssets && <AllocationPanel assets={data.assets} />}
 
         {auth.user && (
           <FincaSyncBanner
@@ -411,8 +400,6 @@ export default function App() {
           />
         )}
 
-        {hasAnyAssets && <AllocationPanel assets={data.assets} />}
-
         {hasSymbolAssets && (
           <PriceUpdateBanner
             lastUpdate={data.lastPriceUpdate}
@@ -421,79 +408,52 @@ export default function App() {
           />
         )}
 
-        {showExportReminder && (
+        {showExportReminder && !auth.user && (
           <ExportReminderBanner
             onExport={handleExportReminder}
             onDismiss={dismissExportReminder}
           />
         )}
 
-        {hasAnyAssets && data.monthlyExpenses > 0 && (
-          <div className="mb-4">
-            <MilestoneCard autonomyMonths={autonomyMonths} monthlyExpenses={data.monthlyExpenses} />
-          </div>
-        )}
-
-        {hasAnyAssets && (
-          <div className="mb-4">
-            <PriorityCard assets={data.assets} monthlyExpenses={data.monthlyExpenses} />
-          </div>
-        )}
-
-        {hasAnyAssets && (
-          <MetricsSection
-            assets={data.assets}
-            monthlyExpenses={data.monthlyExpenses}
-            onInsightsTap={() => setIsInsightsOpen(true)}
-          />
-        )}
-
         {hasAnyAssets ? (
           <div>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center justify-between mb-3">
               <h2 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide">
-                Activos
+                Posiciones
               </h2>
-              {auth.user && cloudReady && (
-                <span className="text-label-sm text-primary/70 font-body">sincronizado</span>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsInsightsOpen(true)}
+                className="text-label-sm text-primary font-body font-medium"
+              >
+                Indicadores
+              </button>
             </div>
             <div className="space-y-4">
-              {CATEGORY_ORDER.map(cat => (
-                <CategorySection
-                  key={cat}
-                  category={cat}
-                  assets={assetsByCategory[cat]}
-                  onAssetClick={openEdit}
-                />
-              ))}
+              {POSITION_GROUPS.map(group => {
+                const groupAssets = group.categories.flatMap(cat => assetsByCategory[cat] ?? [])
+                if (groupAssets.length === 0) return null
+                return group.categories.map(cat => (
+                  <CategorySection
+                    key={cat}
+                    category={cat}
+                    assets={assetsByCategory[cat]}
+                    onAssetClick={openEdit}
+                  />
+                ))
+              })}
             </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary-container/40 flex items-center justify-center mb-5 text-2xl">
-              💰
-            </div>
             <h2 className="text-headline font-display font-semibold text-on-surface mb-2">
-              Empieza a construir
+              Aún no hay nada
             </h2>
-            <p className="text-body text-on-surface/50 font-body max-w-[260px] leading-relaxed mb-6">
-              Añade tus activos y deudas para ver tu situación real de un vistazo.
+            <p className="text-body text-on-surface/50 font-body max-w-[280px] leading-relaxed">
+              Añade cuentas, inversiones o deudas. Los inmuebles llegan de Finca al iniciar sesión.
             </p>
-            {data.monthlyExpenses === 0 && (
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="text-label font-medium text-primary font-body underline underline-offset-2"
-              >
-                Primero, configura tus gastos mensuales →
-              </button>
-            )}
           </div>
         )}
-
-        <p className="text-center text-label-sm text-on-surface/20 font-body mt-10 pb-2">
-          Inspirada en el libro <em>F*ck You Money</em> de Joan Tubau
-        </p>
       </main>
 
       <div className="fixed bottom-6 left-0 right-0 flex justify-center z-30 pointer-events-none">
@@ -531,11 +491,6 @@ export default function App() {
           data={data}
           setData={setData}
           auth={auth}
-        />
-
-        <PhilosophySheet
-          isOpen={isPhilosophyOpen}
-          onClose={() => setIsPhilosophyOpen(false)}
         />
 
         <InsightsSheet

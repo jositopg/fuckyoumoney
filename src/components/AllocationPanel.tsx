@@ -10,9 +10,23 @@ const COLORS: Record<string, string> = {
   real_estate: '#6b8e9a',
   vehicles: '#abb4b5',
   pension: '#8a9a8b',
+  business: '#5c6b73',
+  receivable: '#8a9e7c',
+  other: '#9aa3a4',
 }
 
-const ORDER = ['real_estate', 'stocks', 'cash', 'pension', 'crypto', 'commodities', 'vehicles'] as const
+const ORDER = [
+  'real_estate',
+  'stocks',
+  'cash',
+  'pension',
+  'crypto',
+  'business',
+  'commodities',
+  'vehicles',
+  'receivable',
+  'other',
+] as const
 
 export function AllocationPanel({ assets }: { assets: Asset[] }) {
   const total = getTotalPositiveAssets(assets)

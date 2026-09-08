@@ -15,6 +15,9 @@ const CATEGORY_ICONS: Record<AssetCategory, string> = {
   real_estate: '🏠',
   vehicles: '🚗',
   pension: '🏖️',
+  business: '🏢',
+  receivable: '🤝',
+  other: '📦',
   debt: '📉',
 }
 

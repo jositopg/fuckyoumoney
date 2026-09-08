@@ -2,7 +2,7 @@
 
 > Actualiza este archivo en el mismo commit si cambia el modelo de datos, una vista, una convención o una limitación. Foto del estado actual, no diario.
 
-App personal de Jose para ver **todo su patrimonio en macro**: activos, pasivos, liquidez, autonomía, gráficos. **No gestiona** inmuebles (eso es Finca). Uso exclusivo, datos reales — no perder/corromper datos.
+App personal de Jose para **anotar y ver su patrimonio**: un número (neto), asignación, lista de posiciones. **No gestiona** inmuebles (eso es Finca). Sin chat IA, sin pedagogía de libro. Uso exclusivo, datos reales.
 
 Repo `jositopg/fuckyoumoney`, Vercel: `https://fuckyoumoney.vercel.app`.  
 Handoff: `HANDOFF.md`. Schema para Grok: `supabase/README.md`.

@@ -8,8 +8,9 @@
 ## Producto
 
 - **Finca**: gestión operativa del inmobiliario.
-- **FYM**: balance macro (lectura, stats, gráficos). Inventario no-inmobiliario se edita aquí; inmuebles solo lectura desde Finca.
-- **IA: no va en la app.** Grok en esta terminal lee SQL/JSON (`npm run wealth`).
+- **FYM**: inventario del patrimonio. Portada = neto + asignación + posiciones. Alta en 3 campos. Inmuebles solo lectura desde Finca.
+- **IA: no va en la app.** Grok lee SQL (`npm run wealth` / `patrimonio_ia()`).
+- Reconfiguración 2026-09-08: fuera autonomía/frases/pills/onboarding falso. Tipos nuevos: business, receivable, other.
 
 ## Decisiones
 

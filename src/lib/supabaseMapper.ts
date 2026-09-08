@@ -29,6 +29,9 @@ export const SYNCABLE_CATEGORIES: AssetCategory[] = [
   'pension',
   'vehicles',
   'real_estate',
+  'business',
+  'receivable',
+  'other',
   'debt',
 ]
 
@@ -202,10 +205,24 @@ export function localAssetToDbInsert(
         .join(' | ')
       return {
         ...base,
-        type: 'other',
+        type: 'vehicle',
         quantity: 1,
         manual_value: asset.value,
         notes: vehicleNote || null,
+        is_liquid: false,
+        ticker: null,
+        ticker_source: null,
+        purchase_price: null,
+      }
+    }
+    case 'business':
+    case 'receivable':
+    case 'other': {
+      return {
+        ...base,
+        type: asset.category,
+        quantity: 1,
+        manual_value: asset.value,
         is_liquid: false,
         ticker: null,
         ticker_source: null,
@@ -406,17 +423,49 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         updatedAt: now,
       }
     }
+    case 'business':
+      return {
+        id: row.id,
+        category: 'business',
+        name: row.name,
+        value,
+        notes: row.notes ?? undefined,
+        createdAt: created,
+        updatedAt: now,
+      }
+    case 'receivable':
+      return {
+        id: row.id,
+        category: 'receivable',
+        name: row.name,
+        value,
+        notes: row.notes ?? undefined,
+        createdAt: created,
+        updatedAt: now,
+      }
+    case 'vehicle':
     case 'other':
     default: {
-      // Vehicles (and misc) map to type=other
       const vehicleTypeMatch = row.notes?.match(/tipo:(\w+)/)
       const yearMatch = row.notes?.match(/año:(\d+)/)
+      const isVehicle = row.type === 'vehicle' || Boolean(vehicleTypeMatch)
       const cleanedNotes = row.notes
         ?.replace(/\s*\|\s*tipo:\w+/g, '')
         .replace(/\s*\|\s*año:\d+/g, '')
         .replace(/tipo:\w+/g, '')
         .replace(/año:\d+/g, '')
         .trim()
+      if (!isVehicle) {
+        return {
+          id: row.id,
+          category: 'other',
+          name: row.name,
+          value,
+          notes: row.notes ?? undefined,
+          createdAt: created,
+          updatedAt: now,
+        }
+      }
       return {
         id: row.id,
         category: 'vehicles',

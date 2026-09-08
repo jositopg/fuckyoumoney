@@ -11,6 +11,9 @@ export type AssetType =
   | 'bond'
   | 'pension'
   | 'other'
+  | 'vehicle'
+  | 'business'
+  | 'receivable'
 export type TickerSource = 'yahoo' | 'coingecko'
 export type LiabilityType =
   | 'mortgage'
