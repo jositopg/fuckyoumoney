@@ -11,7 +11,8 @@ interface SettingsSheetProps {
   isOpen: boolean
   onClose: () => void
   monthlyExpenses: number
-  onSave: (expenses: number) => void
+  emergencyTargetMonths?: number
+  onSave: (settings: { monthlyExpenses: number; emergencyTargetMonths: number }) => void
   data: AppData
   setData: (value: AppData | ((prev: AppData) => AppData)) => void
   auth: AuthState
@@ -21,12 +22,14 @@ export function SettingsSheet({
   isOpen,
   onClose,
   monthlyExpenses,
+  emergencyTargetMonths,
   onSave,
   data,
   setData,
   auth,
 }: SettingsSheetProps) {
   const [value, setValue] = useState('')
+  const [months, setMonths] = useState('')
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [importError, setImportError] = useState('')
   const [email, setEmail] = useState('')
@@ -39,17 +42,22 @@ export function SettingsSheet({
   useEffect(() => {
     if (isOpen) {
       setValue(monthlyExpenses > 0 ? monthlyExpenses.toString() : '')
+      setMonths(emergencyTargetMonths && emergencyTargetMonths > 0 ? String(emergencyTargetMonths) : '6')
       setImportStatus('idle')
       setImportError('')
       auth.clearError()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset when sheet opens
-  }, [isOpen, monthlyExpenses])
+  }, [isOpen, monthlyExpenses, emergencyTargetMonths])
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     const num = parseFloat(value.replace(',', '.'))
-    onSave(isNaN(num) || num < 0 ? 0 : num)
+    const m = parseFloat(months.replace(',', '.'))
+    onSave({
+      monthlyExpenses: isNaN(num) || num < 0 ? 0 : num,
+      emergencyTargetMonths: isNaN(m) || m <= 0 ? 6 : m,
+    })
     onClose()
   }
 
@@ -126,11 +134,40 @@ export function SettingsSheet({
           </p>
         </div>
 
-        <div className="bg-surface-container-low rounded-xl p-4">
-          <p className="text-label font-medium text-on-surface/70 font-body mb-1">¿Para qué sirve?</p>
-          <p className="text-label text-on-surface/60 font-body leading-relaxed">
-            Tus gastos mensuales son la unidad de medida real de tu libertad. Con este dato
-            calculamos cuánto tiempo podrías vivir sin depender de ningún ingreso.
+        <div>
+          <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
+            Meses de emergencia
+          </label>
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            {[3, 6, 12].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setMonths(String(n))}
+                className={`rounded-xl py-2.5 text-label font-body font-medium ${
+                  months === String(n)
+                    ? 'bg-primary text-on-primary'
+                    : 'bg-surface-container-highest text-on-surface/70'
+                }`}
+              >
+                {n} meses
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={months}
+            onChange={e => setMonths(e.target.value)}
+            placeholder="6"
+            min="1"
+            step="1"
+            className="w-full bg-surface-container-highest text-on-surface rounded-xl px-4 py-3.5
+              font-body text-body placeholder:text-on-surface/30 focus:outline-none focus:ring-2
+              focus:ring-primary/30 transition-all"
+          />
+          <p className="text-label-sm text-on-surface/50 mt-2 font-body leading-relaxed">
+            Efectivo que no tocas. El resto, o rinde, o está aparcado por un motivo concreto.
           </p>
         </div>
 

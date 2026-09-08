@@ -1,14 +1,13 @@
-import type { Asset, CashMetadata, RealEstateMetadata } from '../types'
+import type { Asset, RealEstateMetadata } from '../types'
 import {
   getAutonomyMonths,
   getDebtRatio,
-  getEmergencyFundMonths,
   getLiquidAssets,
   getNetWorth,
   getTotalDebts,
-  getTotalMonthlyDebtPayments,
   getTotalPositiveAssets,
 } from './calculations'
+import { diagnoseWealth, type WealthDiagnosis } from './moneyDiagnosis'
 
 export interface WealthBrief {
   asOf: string
@@ -19,13 +18,23 @@ export interface WealthBrief {
     totalLiabilities: number
     liquidAssets: number
     realEstateValue: number
+    realEstateTtmNet: number
+    realEstateMonthlyGrossRent: number
     monthlyExpenses: number
     monthlyDebtPayments: number
-    monthlyPassiveIncome: number
+    monthlyGrossPassive: number
+    monthlyNetPassive: number
     autonomyMonths: number | null
     emergencyFundMonths: number | null
+    emergencyAssigned: number
+    idleCash: number
+    parkedCash: number
+    workingCash: number
+    deployableCash: number
+    invested: number
     debtRatio: number
   }
+  diagnosis: WealthDiagnosis
   allocation: { class: string; value: number; pct: number }[]
   positions: {
     id: string
@@ -40,42 +49,44 @@ export interface WealthBrief {
   }[]
   finca?: {
     monthlyContractedRent: number
+    ttmNetCashflow: number
     occupancyNote: string
     gaps: string[]
   }
   notesForModel: string[]
 }
 
-function monthlyPassiveIncome(assets: Asset[]): number {
-  let sum = 0
-  for (const a of assets) {
-    if (a.category === 'real_estate') {
-      sum += (a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0
-    }
-    if (a.category === 'cash') {
-      const rate = (a.metadata as CashMetadata | undefined)?.interestRate
-      if (rate && rate > 0) sum += (a.value * rate) / 100 / 12
-    }
-  }
-  return Math.round(sum * 100) / 100
-}
-
-export function buildWealthBrief(assets: Asset[], monthlyExpenses: number): WealthBrief {
+export function buildWealthBrief(
+  assets: Asset[],
+  monthlyExpenses: number,
+  emergencyTargetMonths?: number | null
+): WealthBrief {
   const totalAssets = getTotalPositiveAssets(assets)
   const totalLiabilities = getTotalDebts(assets)
   const netWorth = getNetWorth(assets)
   const liquid = getLiquidAssets(assets)
-  const realEstateValue = assets
-    .filter(a => a.category === 'real_estate')
-    .reduce((s, a) => s + a.value, 0)
+  const diagnosis = diagnoseWealth(assets, monthlyExpenses, emergencyTargetMonths)
   const autonomy = getAutonomyMonths(assets, monthlyExpenses)
-  const emergency = getEmergencyFundMonths(assets, monthlyExpenses)
   const fincaAssets = assets.filter(a => a.source === 'finca' || a.readOnly)
   const monthlyRent = fincaAssets.reduce((s, a) => {
     return s + ((a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0)
   }, 0)
+  const fincaTtm = fincaAssets.reduce((s, a) => {
+    return s + ((a.metadata as RealEstateMetadata | undefined)?.ttmNetCashflow ?? 0)
+  }, 0)
 
-  const classes = ['cash', 'stocks', 'crypto', 'commodities', 'real_estate', 'vehicles', 'pension'] as const
+  const classes = [
+    'cash',
+    'stocks',
+    'crypto',
+    'commodities',
+    'real_estate',
+    'vehicles',
+    'pension',
+    'business',
+    'receivable',
+    'other',
+  ] as const
   const allocation = classes
     .map(className => {
       const value = assets.filter(a => a.category === className).reduce((s, a) => s + a.value, 0)
@@ -99,16 +110,21 @@ export function buildWealthBrief(assets: Asset[], monthlyExpenses: number): Weal
       value: a.value,
       source: a.source ?? 'manual',
       readOnly: Boolean(a.readOnly),
-      liquid: a.category === 'cash' || a.category === 'stocks' || a.category === 'crypto',
+      liquid: a.category === 'cash',
       extra: Object.keys(extra).length ? extra : undefined,
     }
   })
 
   const notesForModel = [
     'Cifras en EUR. No inventes números que no estén en este JSON.',
+    'Lee diagnosis.verdict y diagnosis.headline antes de opinar. Las acciones ya están ordenadas.',
+    'Efectivo: emergency / parked / working / idle. parked no es colchón. stocks/crypto NO son emergencia.',
+    'Lee diagnosis.moves: leave / deploy / operate / pay_down / classify. Deploy = aportar a que rinda (fondos), no vender fondos por el NAV del día.',
+    'No recomiendes un fondo concreto ni un tracker en tiempo real. La foto es el valor al abrir.',
+    'Inmuebles: usa ttmNetCashflow (neto 12 meses), no monthlyRent (bruto contratado).',
     'Los inmuebles con source=finca son de solo lectura; la gestión vive en la app Finca.',
     'Finca no envía principal de hipoteca. Si hay hipotecas, están en class=debt.',
-    'Autonomía = (activos líquidos − deudas) / gastos mensuales. No uses el patrimonio inmobiliario para autonomía.',
+    'Autonomía = (activos líquidos − deudas) / gastos mensuales. El ladrillo no cuenta para autonomía.',
   ]
 
   return {
@@ -119,19 +135,30 @@ export function buildWealthBrief(assets: Asset[], monthlyExpenses: number): Weal
       totalAssets,
       totalLiabilities,
       liquidAssets: liquid,
-      realEstateValue,
+      realEstateValue: diagnosis.realEstate.value,
+      realEstateTtmNet: diagnosis.realEstate.ttmNetCashflow,
+      realEstateMonthlyGrossRent: diagnosis.realEstate.monthlyGrossRent,
       monthlyExpenses,
-      monthlyDebtPayments: getTotalMonthlyDebtPayments(assets),
-      monthlyPassiveIncome: monthlyPassiveIncome(assets),
+      monthlyDebtPayments: diagnosis.cashflow.monthlyDebtPayments,
+      monthlyGrossPassive: diagnosis.cashflow.monthlyGrossPassive,
+      monthlyNetPassive: diagnosis.cashflow.monthlyNetPassive,
       autonomyMonths: isFinite(autonomy) ? Math.round(autonomy * 10) / 10 : null,
-      emergencyFundMonths: isFinite(emergency) ? Math.round(emergency * 10) / 10 : null,
+      emergencyFundMonths: diagnosis.cashflow.emergencyMonths,
+      emergencyAssigned: diagnosis.buckets.emergencyAssigned,
+      idleCash: diagnosis.buckets.idle,
+      parkedCash: diagnosis.buckets.parked,
+      workingCash: diagnosis.buckets.working,
+      deployableCash: diagnosis.capital.deployable,
+      invested: diagnosis.capital.invested,
       debtRatio: Math.round(getDebtRatio(assets) * 1000) / 1000,
     },
+    diagnosis,
     allocation,
     positions,
     finca: fincaAssets.length
       ? {
           monthlyContractedRent: monthlyRent,
+          ttmNetCashflow: fincaTtm,
           occupancyNote: `${fincaAssets.length} inmuebles sincronizados desde Finca`,
           gaps: ['no_mortgage_principal'],
         }

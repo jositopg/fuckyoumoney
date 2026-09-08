@@ -19,13 +19,13 @@ export function PriceUpdateBanner({ lastUpdate, isOnline, isUpdating }: PriceUpd
       {isUpdating ? (
         <>
           <div className="w-3 h-3 rounded-full border border-primary/40 border-t-primary animate-spin" />
-          <span className="text-label-sm text-on-surface/50 font-body">Actualizando precios...</span>
+          <span className="text-label-sm text-on-surface/50 font-body">Foto de precios…</span>
         </>
       ) : isOnline ? (
         <>
           <Wifi size={12} className="text-primary/60" />
           <span className="text-label-sm text-on-surface/40 font-body">
-            Precios actualizados a las {lastUpdate ? formatTime(lastUpdate) : '—'}
+            Fondos al abrir · {lastUpdate ? formatTime(lastUpdate) : '—'}
           </span>
         </>
       ) : (

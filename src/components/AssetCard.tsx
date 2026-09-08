@@ -28,12 +28,11 @@ function getSecondaryLine(asset: Asset): string | null {
   switch (asset.category) {
     case 'cash': {
       const cm = m as CashMetadata
-      const typeLabels: Record<string, string> = {
-        corriente: 'Cuenta corriente', ahorro: 'Cuenta de ahorro',
-        remunerada: 'Cuenta remunerada', nomina: 'Cuenta nómina', otro: 'Otro'
-      }
       const parts = []
-      if (cm.accountType) parts.push(typeLabels[cm.accountType] || '')
+      if (cm.job === 'emergency') parts.push('Emergencia')
+      else if (cm.job === 'parked') parts.push(cm.parkedReason ? `Aparcado · ${cm.parkedReason}` : 'Aparcado')
+      else if (cm.job === 'working') parts.push('Rinde')
+      else if (cm.job === 'idle') parts.push('Parado')
       if (cm.interestRate) parts.push(`${cm.interestRate}% TAE`)
       return parts.join(' · ') || null
     }
@@ -63,7 +62,10 @@ function getSecondaryLine(asset: Asset): string | null {
       }
       const parts = []
       if (rm.propertyType) parts.push(typeLabels[rm.propertyType] || '')
-      if (rm.monthlyRent) parts.push(`${formatEur(rm.monthlyRent)}/mes`)
+      if (rm.monthlyRent) parts.push(`${formatEur(rm.monthlyRent)} bruto/mes`)
+      if (rm.ttmNetCashflow != null && rm.ttmNetCashflow !== 0) {
+        parts.push(`${formatEur(Math.round(rm.ttmNetCashflow))} neto/año`)
+      }
       return parts.join(' · ') || null
     }
     case 'vehicles': {

@@ -8,6 +8,7 @@ import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
 import { NetWorthHero } from './components/NetWorthHero'
+import { WealthStatus } from './components/WealthStatus'
 import { AllocationPanel } from './components/AllocationPanel'
 import { FincaSyncBanner } from './components/FincaSyncBanner'
 import { CategorySection } from './components/CategorySection'
@@ -22,10 +23,10 @@ import { exportData } from './utils/dataPortability'
 import {
   createCloudAsset,
   deleteCloudAsset,
-  getProfileMonthlyExpenses,
+  getProfileSettings,
   mergeCloudWithLocalRealEstate,
   migrateLocalToSupabaseIfNeeded,
-  saveProfileMonthlyExpenses,
+  saveProfileSettings,
   updateCloudAsset,
 } from './lib/supabaseData'
 import { replaceFincaAssets, syncFincaFromApi } from './lib/fincaSync'
@@ -43,7 +44,7 @@ const DEFAULT_DATA: AppData = {
   assets: [],
   monthlyExpenses: 0,
   hasSeenOnboarding: false,
-  schema_version: 3,
+  schema_version: 4,
 }
 
 function newAssetId(loggedIn: boolean): string {
@@ -87,11 +88,14 @@ export default function App() {
           auth.user!.id
         )
         if (cancelled) return
-        let cloudExpenses: number | null = null
+        let cloudSettings: { monthlyExpenses: number | null; emergencyTargetMonths: number | null } = {
+          monthlyExpenses: null,
+          emergencyTargetMonths: null,
+        }
         try {
-          cloudExpenses = await getProfileMonthlyExpenses(auth.user!.id)
+          cloudSettings = await getProfileSettings(auth.user!.id)
         } catch {
-          cloudExpenses = null
+          cloudSettings = { monthlyExpenses: null, emergencyTargetMonths: null }
         }
         setData(prev => ({
           ...prev,
@@ -99,8 +103,12 @@ export default function App() {
             cloudAssets,
             omittedRealEstate.length > 0 ? omittedRealEstate : prev.assets
           ),
-          // Prefer DB when column exists and has a value; else keep localStorage
-          ...(cloudExpenses != null ? { monthlyExpenses: cloudExpenses } : {}),
+          ...(cloudSettings.monthlyExpenses != null
+            ? { monthlyExpenses: cloudSettings.monthlyExpenses }
+            : {}),
+          ...(cloudSettings.emergencyTargetMonths != null
+            ? { emergencyTargetMonths: cloudSettings.emergencyTargetMonths }
+            : {}),
         }))
         setCloudReady(true)
         setSyncError(null)
@@ -300,11 +308,18 @@ export default function App() {
     setEditAsset(null)
   }
 
-  async function handleSaveSettings(expenses: number) {
-    setData(prev => ({ ...prev, monthlyExpenses: expenses }))
+  async function handleSaveSettings(settings: {
+    monthlyExpenses: number
+    emergencyTargetMonths: number
+  }) {
+    setData(prev => ({
+      ...prev,
+      monthlyExpenses: settings.monthlyExpenses,
+      emergencyTargetMonths: settings.emergencyTargetMonths,
+    }))
     if (auth.user && cloudReady) {
       try {
-        await saveProfileMonthlyExpenses(auth.user.id, expenses)
+        await saveProfileSettings(auth.user.id, settings)
       } catch {
         // Column may not exist yet — localStorage remains source of truth
       }
@@ -387,6 +402,17 @@ export default function App() {
         )}
 
         <NetWorthHero assets={data.assets} snapshots={data.snapshots} />
+
+        {hasAnyAssets && (
+          <WealthStatus
+            assets={data.assets}
+            monthlyExpenses={data.monthlyExpenses}
+            emergencyTargetMonths={data.emergencyTargetMonths}
+            onAsk={q => {
+              if (q.id === 'expenses' || q.id === 'emergency_target') setIsSettingsOpen(true)
+            }}
+          />
+        )}
 
         {hasAnyAssets && <AllocationPanel assets={data.assets} />}
 
@@ -487,6 +513,7 @@ export default function App() {
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
           monthlyExpenses={data.monthlyExpenses}
+          emergencyTargetMonths={data.emergencyTargetMonths}
           onSave={handleSaveSettings}
           data={data}
           setData={setData}

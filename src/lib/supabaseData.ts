@@ -8,7 +8,7 @@ import {
   mergeCloudWithLocalRealEstate,
   prepareMigrationPayload,
 } from './supabaseMapper'
-import type { ProfileRow } from '../types/database'
+import type { Database, ProfileRow } from '../types/database'
 
 export const MIGRATION_FLAG_KEY = 'fym_migrated_to_supabase'
 
@@ -276,27 +276,49 @@ export async function deleteCloudAsset(
 }
 
 
+export interface ProfileSettings {
+  monthlyExpenses: number | null
+  emergencyTargetMonths: number | null
+}
+
 export async function getProfileMonthlyExpenses(userId: string): Promise<number | null> {
-  if (!supabase) return null
+  const s = await getProfileSettings(userId)
+  return s.monthlyExpenses
+}
+
+export async function getProfileSettings(userId: string): Promise<ProfileSettings> {
+  if (!supabase) return { monthlyExpenses: null, emergencyTargetMonths: null }
   const { data, error } = await supabase
-    .from("profiles")
-    .select("monthly_expenses")
-    .eq("id", userId)
+    .from('profiles')
+    .select('monthly_expenses, emergency_target_months')
+    .eq('id', userId)
     .maybeSingle()
   if (error) {
-    console.warn("getProfileMonthlyExpenses failed", error.message)
-    return null
+    console.warn('getProfileSettings failed', error.message)
+    return { monthlyExpenses: null, emergencyTargetMonths: null }
   }
-  if (data?.monthly_expenses == null) return null
-  return Number(data.monthly_expenses)
+  const row = data as { monthly_expenses?: number | null; emergency_target_months?: number | null } | null
+  return {
+    monthlyExpenses: row?.monthly_expenses != null ? Number(row.monthly_expenses) : null,
+    emergencyTargetMonths:
+      row?.emergency_target_months != null ? Number(row.emergency_target_months) : null,
+  }
 }
 
 export async function saveProfileMonthlyExpenses(userId: string, monthlyExpenses: number): Promise<void> {
-  if (!supabase) throw new Error("Supabase no configurado")
-  const { error } = await supabase
-    .from("profiles")
-    .update({ monthly_expenses: monthlyExpenses })
-    .eq("id", userId)
+  await saveProfileSettings(userId, { monthlyExpenses })
+}
+
+export async function saveProfileSettings(
+  userId: string,
+  settings: { monthlyExpenses?: number; emergencyTargetMonths?: number }
+): Promise<void> {
+  if (!supabase) throw new Error('Supabase no configurado')
+  const patch: Database['public']['Tables']['profiles']['Update'] = {}
+  if (settings.monthlyExpenses != null) patch.monthly_expenses = settings.monthlyExpenses
+  if (settings.emergencyTargetMonths != null) patch.emergency_target_months = settings.emergencyTargetMonths
+  if (patch.monthly_expenses == null && patch.emergency_target_months == null) return
+  const { error } = await supabase.from('profiles').update(patch).eq('id', userId)
   if (error) throw error
 }
 

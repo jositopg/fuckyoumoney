@@ -1,6 +1,6 @@
 import type { AppData } from '../types'
 
-const CURRENT_VERSION = 3
+const CURRENT_VERSION = 4
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function migrateData(raw: any): AppData {
@@ -28,6 +28,11 @@ export function migrateData(raw: any): AppData {
   if (raw.schema_version === 2) {
     const hasData = Array.isArray(raw.assets) && raw.assets.length > 0
     raw = { ...raw, hasSeenOnboarding: hasData, schema_version: 3 }
+  }
+
+  // v3 → v4: emergencyTargetMonths is asked in settings (default applied at diagnosis)
+  if (raw.schema_version === 3) {
+    raw = { ...raw, schema_version: 4 }
   }
 
   return raw as AppData

@@ -33,6 +33,7 @@ export interface Database {
           name: string | null
           display_currency: DisplayCurrency
           monthly_expenses: number | null
+          emergency_target_months: number | null
         }
         Insert: {
           id: string
@@ -40,6 +41,7 @@ export interface Database {
           name?: string | null
           display_currency?: DisplayCurrency
           monthly_expenses?: number | null
+          emergency_target_months?: number | null
         }
         Update: {
           id?: string
@@ -47,6 +49,7 @@ export interface Database {
           name?: string | null
           display_currency?: DisplayCurrency
           monthly_expenses?: number | null
+          emergency_target_months?: number | null
         }
         Relationships: []
       }

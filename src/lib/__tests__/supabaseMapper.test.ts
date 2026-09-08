@@ -52,6 +52,23 @@ describe('supabaseMapper local → DB', () => {
     })
   })
 
+  it('packs cash job, TAE and parked reason into notes', () => {
+    const row = localAssetToDbInsert(
+      baseAsset({
+        category: 'cash',
+        name: 'Reserva',
+        value: 8000,
+        notes: 'hacienda',
+        metadata: { job: 'parked', parkedReason: 'impuestos 2026', interestRate: 1.5 },
+      }),
+      USER,
+      '22222222-2222-4222-8222-222222222224'
+    )
+    expect(row?.notes).toContain('FYM1:')
+    expect(row?.notes).toContain('parked')
+    expect(row?.notes).toContain('impuestos 2026')
+  })
+
   it('maps cash accountType to institution', () => {
     const row = localAssetToDbInsert(
       baseAsset({
@@ -278,6 +295,36 @@ describe('supabaseMapper DB → local', () => {
     const asset = dbAssetToLocal(row)
     expect(asset.category).toBe('cash')
     expect(asset.metadata).toMatchObject({ accountType: 'corriente' })
+  })
+
+  it('unpacks cash job and TAE from packed notes', () => {
+    const row: AssetRow = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac',
+      user_id: USER,
+      name: 'Reserva',
+      type: 'cash',
+      ticker: null,
+      ticker_source: null,
+      quantity: 1,
+      purchase_price: null,
+      purchase_date: null,
+      manual_value: 8000,
+      currency: 'EUR',
+      institution: 'ahorro',
+      country: null,
+      notes: 'FYM1:{"job":"parked","parkedReason":"impuestos","interestRate":1.5,"human":"hacienda"}',
+      is_liquid: true,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+    }
+    const asset = dbAssetToLocal(row)
+    expect(asset.notes).toBe('hacienda')
+    expect(asset.metadata).toMatchObject({
+      accountType: 'ahorro',
+      job: 'parked',
+      parkedReason: 'impuestos',
+      interestRate: 1.5,
+    })
   })
 
   it('converts real_estate row to read-only finca asset, not vehicles', () => {

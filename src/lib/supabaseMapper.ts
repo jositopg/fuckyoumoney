@@ -119,7 +119,13 @@ export function localAssetToDbInsert(
   switch (asset.category) {
     case 'cash': {
       const meta = asset.metadata as CashMetadata | undefined
-      // Bank/label stays in asset.name; accountType maps to institution for MVP cash-por-banco
+      const extra = {
+        job: meta?.job,
+        interestRate: meta?.interestRate,
+        parkedReason: meta?.parkedReason,
+        availableFrom: meta?.availableFrom,
+        lastInterestUpdate: meta?.lastInterestUpdate,
+      }
       return {
         ...base,
         type: 'cash',
@@ -130,6 +136,7 @@ export function localAssetToDbInsert(
         ticker_source: null,
         purchase_price: null,
         institution: meta?.accountType ?? null,
+        notes: packNotes(asset.notes, extra),
       }
     }
     case 'stocks': {
@@ -307,18 +314,30 @@ export function dbAssetToLocal(row: AssetRow): Asset {
 
   switch (row.type) {
     case 'cash': {
+      const { human, extra } = unpackNotes(row.notes)
       const cashTypes = ['corriente', 'ahorro', 'remunerada', 'nomina', 'otro'] as const
+      const jobs = ['emergency', 'parked', 'working', 'idle'] as const
       const accountType = cashTypes.includes(row.institution as (typeof cashTypes)[number])
         ? (row.institution as CashMetadata['accountType'])
+        : undefined
+      const job = jobs.includes(extra.job as (typeof jobs)[number])
+        ? (extra.job as CashMetadata['job'])
         : undefined
       return {
         id: row.id,
         category: 'cash',
         name: row.name,
         value,
-        notes: row.notes ?? undefined,
+        notes: human,
         metadata: {
           ...(accountType ? { accountType } : {}),
+          ...(job ? { job } : {}),
+          ...(typeof extra.interestRate === 'number' ? { interestRate: extra.interestRate } : {}),
+          ...(typeof extra.parkedReason === 'string' ? { parkedReason: extra.parkedReason } : {}),
+          ...(typeof extra.availableFrom === 'string' ? { availableFrom: extra.availableFrom } : {}),
+          ...(typeof extra.lastInterestUpdate === 'string'
+            ? { lastInterestUpdate: extra.lastInterestUpdate }
+            : {}),
         } satisfies CashMetadata,
         createdAt: created,
         updatedAt: now,

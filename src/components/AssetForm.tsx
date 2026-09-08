@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import type { Asset, AssetCategory, CryptoMetadata, DebtMetadata, StocksMetadata } from '../types'
-import { CATEGORY_LABELS } from '../types'
+import type {
+  Asset,
+  AssetCategory,
+  CashJob,
+  CashMetadata,
+  CryptoMetadata,
+  DebtMetadata,
+  StocksMetadata,
+} from '../types'
+import { CASH_JOB_LABELS, CATEGORY_LABELS } from '../types'
 import { BottomSheet } from './BottomSheet'
 
 interface AssetFormProps {
@@ -48,6 +56,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   const [debtType, setDebtType] = useState<NonNullable<DebtMetadata['debtType']>>('hipoteca')
   const [monthlyPayment, setMonthlyPayment] = useState('')
   const [interestRate, setInterestRate] = useState('')
+  const [cashJob, setCashJob] = useState<CashJob>('idle')
+  const [parkedReason, setParkedReason] = useState('')
   const [notes, setNotes] = useState('')
   const [showMore, setShowMore] = useState(false)
   const [error, setError] = useState('')
@@ -66,7 +76,11 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       const dm = editAsset.metadata as DebtMetadata | undefined
       setDebtType(dm?.debtType || 'hipoteca')
       setMonthlyPayment(dm?.monthlyPayment != null ? String(dm.monthlyPayment) : '')
-      setInterestRate(dm?.interestRate != null ? String(dm.interestRate) : '')
+      const cm = editAsset.metadata as CashMetadata | DebtMetadata | undefined
+      setInterestRate(cm?.interestRate != null ? String(cm.interestRate) : '')
+      const cashMeta = editAsset.metadata as CashMetadata | undefined
+      setCashJob(cashMeta?.job || ((cashMeta?.interestRate ?? 0) > 0 ? 'working' : 'idle'))
+      setParkedReason(cashMeta?.parkedReason || '')
       setNotes(editAsset.notes || '')
       setShowMore(Boolean(editAsset.symbol || dm?.monthlyPayment || editAsset.notes))
     } else {
@@ -79,6 +93,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setDebtType('hipoteca')
       setMonthlyPayment('')
       setInterestRate('')
+      setCashJob('idle')
+      setParkedReason('')
       setNotes('')
       setShowMore(false)
     }
@@ -106,12 +122,21 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       return
     }
 
+    const rate = interestRate ? Number(interestRate.replace(',', '.')) : undefined
     let metadata: Asset['metadata']
-    if (category === 'debt') {
+    if (category === 'cash') {
+      const prev = editAsset?.metadata as CashMetadata | undefined
+      metadata = {
+        ...prev,
+        job: cashJob,
+        interestRate: rate,
+        parkedReason: cashJob === 'parked' ? parkedReason.trim() || undefined : undefined,
+      }
+    } else if (category === 'debt') {
       metadata = {
         debtType,
         monthlyPayment: monthlyPayment ? parseEur(monthlyPayment) : undefined,
-        interestRate: interestRate ? Number(interestRate.replace(',', '.')) : undefined,
+        interestRate: rate,
       }
     } else if (category === 'stocks') {
       const qty = quantity ? Number(quantity.replace(',', '.')) : undefined
@@ -241,6 +266,44 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               className={inputClass}
             />
           </div>
+
+          {kind === 'cash' && (
+            <div>
+              <p className="text-label font-medium text-on-surface/70 mb-2 font-body">Para qué es</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(Object.keys(CASH_JOB_LABELS) as CashJob[]).map(job => (
+                  <button
+                    key={job}
+                    type="button"
+                    onClick={() => setCashJob(job)}
+                    className={`rounded-xl py-2.5 text-label font-body font-medium ${
+                      cashJob === job ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-on-surface/70'
+                    }`}
+                  >
+                    {CASH_JOB_LABELS[job]}
+                  </button>
+                ))}
+              </div>
+              {cashJob === 'parked' && (
+                <input
+                  value={parkedReason}
+                  onChange={e => setParkedReason(e.target.value)}
+                  placeholder="Motivo: impuestos, entrada, reforma…"
+                  className={inputClass + ' mt-2'}
+                />
+              )}
+              <div className="mt-3">
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">TAE % (si rinde)</label>
+                <input
+                  inputMode="decimal"
+                  value={interestRate}
+                  onChange={e => setInterestRate(e.target.value)}
+                  placeholder="0"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
 
           <button
             type="button"

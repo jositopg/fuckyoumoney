@@ -280,12 +280,13 @@ function KeyRatios({ assets, monthlyExpenses }: { assets: Asset[]; monthlyExpens
   const hasRentalYield = rentableAssets.length > 0
   const rentalYield = hasRentalYield
     ? (() => {
-        const annualRent = rentableAssets.reduce((s, a) => {
+        const annual = rentableAssets.reduce((s, a) => {
           const meta = a.metadata as RealEstateMetadata | undefined
+          if (meta?.ttmNetCashflow != null && meta.ttmNetCashflow !== 0) return s + meta.ttmNetCashflow
           return s + (meta?.monthlyRent ?? 0) * 12
         }, 0)
         const propValue = rentableAssets.reduce((s, a) => s + a.value, 0)
-        return propValue > 0 ? Math.round((annualRent / propValue) * 100 * 10) / 10 : 0
+        return propValue > 0 ? Math.round((annual / propValue) * 100 * 10) / 10 : 0
       })()
     : null
 
@@ -372,6 +373,10 @@ function PassiveIncomePanel({ assets, monthlyExpenses }: { assets: Asset[]; mont
     .filter(a => a.category === 'real_estate')
     .reduce((s, a) => s + ((a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0), 0)
 
+  const rentalNetMonthly = assets
+    .filter(a => a.category === 'real_estate')
+    .reduce((s, a) => s + ((a.metadata as RealEstateMetadata | undefined)?.ttmNetCashflow ?? 0), 0) / 12
+
   const interestIncome = assets
     .filter(a => a.category === 'cash')
     .reduce((s, a) => {
@@ -380,15 +385,18 @@ function PassiveIncomePanel({ assets, monthlyExpenses }: { assets: Asset[]; mont
       return rate > 0 ? s + (a.value * rate) / 100 / 12 : s
     }, 0)
 
-  const totalPassive = rentalIncome + interestIncome
-  if (totalPassive <= 0) return null
+  const totalPassive = rentalNetMonthly + interestIncome
+  const totalGross = rentalIncome + interestIncome
+  if (totalGross <= 0 && totalPassive <= 0) return null
 
   const coveragePct = monthlyExpenses > 0 ? Math.min((totalPassive / monthlyExpenses) * 100, 100) : 0
   const coverageRounded = Math.round(coveragePct)
   const covered = totalPassive >= monthlyExpenses
 
   const sources = [
-    rentalIncome > 0 && { icon: '🏠', label: 'Alquiler', monthly: rentalIncome },
+    rentalNetMonthly !== 0 && { icon: '🏠', label: 'Inmuebles neto', monthly: rentalNetMonthly },
+    rentalIncome > 0 &&
+      rentalNetMonthly === 0 && { icon: '🏠', label: 'Alquiler bruto', monthly: rentalIncome },
     interestIncome > 0 && { icon: '🏦', label: 'Intereses', monthly: interestIncome },
   ].filter(Boolean) as { icon: string; label: string; monthly: number }[]
 
@@ -411,7 +419,7 @@ function PassiveIncomePanel({ assets, monthlyExpenses }: { assets: Asset[]; mont
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-surface-container-highest">
           <span className="text-label font-semibold text-on-surface font-body">Total</span>
           <span className="text-label font-semibold text-primary font-body tabular-nums">
-            {formatEur(Math.round(totalPassive))}/mes
+            {formatEur(Math.round(totalPassive || totalGross))}/mes neto
           </span>
         </div>
       </div>
@@ -628,7 +636,10 @@ export function InsightsSheet({ isOpen, onClose, assets, monthlyExpenses, snapsh
   const autonomyMonths = getAutonomyMonths(assets, monthlyExpenses)
 
   const hasPassiveIncome = assets.some(a => {
-    if (a.category === 'real_estate') return ((a.metadata as RealEstateMetadata | undefined)?.monthlyRent ?? 0) > 0
+    if (a.category === 'real_estate') {
+      const m = a.metadata as RealEstateMetadata | undefined
+      return (m?.monthlyRent ?? 0) > 0 || (m?.ttmNetCashflow ?? 0) !== 0
+    }
     if (a.category === 'cash') return ((a.metadata as CashMetadata | undefined)?.interestRate ?? 0) > 0
     return false
   })

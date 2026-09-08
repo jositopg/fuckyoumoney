@@ -50,9 +50,12 @@ async function main() {
     currency: 'EUR',
     notesForModel: [
       'Cifras en EUR. No inventes números que no estén en este JSON.',
+      'Si fuckyoumoney.diagnosis existe, lee verdict y headline antes de opinar.',
+      'Efectivo: emergency / parked / working / idle. parked no es colchón. stocks/crypto NO son emergencia.',
+      'Inmuebles: usa totals.ttmNetCashflow (neto 12 meses), no monthlyContractedRent como si fuera neto.',
       'Los inmuebles source=finca son de solo lectura; la gestión vive en la app Finca.',
       'Finca no envía principal de hipoteca. Si hay hipotecas, están en FYM liabilities.',
-      'Autonomía = (activos líquidos − deudas) / gastos mensuales. El ladrillo no cuenta para autonomía.',
+      'Autonomía = (efectivo − deudas) / gastos mensuales. El ladrillo no cuenta para autonomía.',
     ],
     sources: { finca: false, fuckyoumoney: false },
     finca: null,

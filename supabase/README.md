@@ -9,13 +9,14 @@ App: https://fuckyoumoney.vercel.app
 
 ```sql
 SELECT * FROM ai_guide ORDER BY sort;   -- instrucciones (también con anon key)
-SELECT patrimonio_ia();                 -- briefing JSON (login o service_role)
+SELECT patrimonio_ia();                 -- briefing + diagnosis.verdict
+SELECT * FROM v_cash_jobs;              -- emergency | parked | working | idle
+SELECT * FROM v_real_estate_yield;      -- valor, bruto, neto TTM
 SELECT * FROM v_net_worth;
 SELECT * FROM v_positions;
-SELECT * FROM v_allocation;
 ```
 
-No inventes cifras. EUR. Inmuebles `source=finca` son solo lectura (la app Finca los opera). Hipotecas = `v_positions` donde `kind=liability` y `class=mortgage`.
+No inventes cifras. EUR. Lee `diagnosis.verdict` y `diagnosis.moves` antes de opinar. `deploy` = aportar a que rinda (fondos), no un ticker en vivo ni un fondo concreto. Efectivo parado ≠ colchón. Inmuebles: usa `ttmNetCashflow`, no el alquiler bruto. `source=finca` es solo lectura. Hipotecas = `kind=liability` y `class=mortgage`.
 
 ## Si estás en la terminal de Jose
 

@@ -12,10 +12,25 @@ export type AssetCategory =
   | 'other'
 
 // Per-category metadata — all fields optional for backwards compatibility
+export type CashJob = 'emergency' | 'parked' | 'working' | 'idle'
+
+export const CASH_JOB_LABELS: Record<CashJob, string> = {
+  emergency: 'Emergencia',
+  parked: 'Aparcado',
+  working: 'Rinde',
+  idle: 'Parado',
+}
+
 export interface CashMetadata {
   accountType?: 'corriente' | 'ahorro' | 'remunerada' | 'nomina' | 'otro'
   interestRate?: number    // annual % for remunerada/ahorro accounts
   lastInterestUpdate?: string // ISO date — last time compound interest was applied
+  /** What this cash is for. Default: idle (or working if interestRate > 0). */
+  job?: CashJob
+  /** Required in practice when job=parked — e.g. impuestos, entrada, reforma. */
+  parkedReason?: string
+  /** When parked money becomes free (ISO date). */
+  availableFrom?: string
 }
 
 export interface StocksMetadata {
@@ -118,6 +133,8 @@ export interface WealthSnapshot {
 export interface AppData {
   assets: Asset[]
   monthlyExpenses: number
+  /** Months of expenses to keep as emergency cash. Undefined = not asked yet (default 6). */
+  emergencyTargetMonths?: number
   lastPriceUpdate?: string
   snapshots?: WealthSnapshot[]
   lastExportReminder?: string // ISO date — last time we showed the export reminder

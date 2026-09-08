@@ -8,9 +8,10 @@
 ## Producto
 
 - **Finca**: gestión operativa del inmobiliario.
-- **FYM**: inventario del patrimonio. Portada = neto + asignación + posiciones. Alta en 3 campos. Inmuebles solo lectura desde Finca.
-- **IA: no va en la app.** Grok lee SQL (`npm run wealth` / `patrimonio_ia()`).
-- Reconfiguración 2026-09-08: fuera autonomía/frases/pills/onboarding falso. Tipos nuevos: business, receivable, other.
+- **FYM**: inventario del patrimonio. Portada = neto + veredicto + efectivo (emergencia/aparcado/rinde/parado) + inmuebles (valor y neto) + asignación + posiciones.
+- **IA: no va en la app.** Grok lee SQL (`npm run wealth` / `patrimonio_ia()`), que ya trae `diagnosis.verdict`.
+- Efectivo tiene un trabajo. El colchón no son los fondos. El alquiler bruto no es el neto.
+- No hay análisis en tiempo real de inversiones. Hay foto + `moves` (dejar / mover a que rinda / producir).
 
 ## Decisiones
 
@@ -37,7 +38,10 @@
 - [x] `scripts/dump-wealth.mjs` / `npm run wealth`
 - [x] Migración `001_wealth_os.sql` autoexplicativa (`ai_guide`, `patrimonio_ia()`, vistas, comentarios)
 - [x] `~/.fuckyoumoney-db.env` + `001_wealth_os.sql` aplicado (`ai_guide`, vistas, tablas)
-- [ ] Jose: login en fuckyoumoney.vercel.app y sync Finca (FYM `assets` sigue en 0 filas)
+- [x] Efectivo con job + colchón en meses + neto inmobiliario + diagnosis en `patrimonio_ia()` (2026-09-08)
+- [x] FYM ya tiene posiciones (neto ~2.03M, 20 inmuebles, ~492k efectivo sin job)
+- [ ] Jose: gasto mensual + meses de colchón en Ajustes
+- [ ] Jose: marcar cada cuenta (emergencia / aparcado / rinde / parado)
 
 ## Cómo consultar el patrimonio
 
@@ -45,10 +49,11 @@
 cd ~/Proyectos/fuck-you-money && npm run wealth
 ```
 
-Hoy solo rellena `finca` (inmuebles). Cuando exista el env de FYM, rellena también cuentas, fondos y deudas.
+`npm run wealth` y `SELECT patrimonio_ia()` ya traen cuentas, inmuebles y `diagnosis`.
 
 ## Huecos
 
-- 8/20 inmuebles sin `valor_mercado`.
-- Snapshots mensuales aún en localStorage hasta aplicar la migración.
-- Onboarding copy (“sin servidor”) desfasada.
+- Gasto mensual y meses de colchón aún no dichos → verdict `unknown`.
+- ~492k € de efectivo sin job (la app lo trata como parado).
+- 8/20 inmuebles sin valor de mercado. 4 vacíos.
+- Snapshots mensuales aún en localStorage.

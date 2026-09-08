@@ -30,13 +30,17 @@ describe('buildWealthBrief', () => {
       }),
       asset({ category: 'debt', name: 'Hipoteca', value: 50000, metadata: { monthlyPayment: 400 } }),
     ]
-    const brief = buildWealthBrief(assets, 2000)
+    const brief = buildWealthBrief(assets, 2000, 6)
     expect(brief.totals.netWorth).toBe(160000)
     expect(brief.totals.realEstateValue).toBe(200000)
-    expect(brief.totals.monthlyPassiveIncome).toBe(800)
+    expect(brief.totals.monthlyGrossPassive).toBe(800)
     expect(brief.totals.monthlyDebtPayments).toBe(400)
+    expect(brief.totals.idleCash).toBe(10000)
+    expect(brief.diagnosis.verdict).toBeTruthy()
     expect(brief.allocation.find(a => a.class === 'real_estate')?.pct).toBeGreaterThan(90)
     expect(brief.finca?.monthlyContractedRent).toBe(800)
     expect(brief.positions).toHaveLength(3)
+    expect(brief.positions.find(p => p.class === 'cash')?.liquid).toBe(true)
+    expect(brief.notesForModel.some(n => n.includes('ttmNetCashflow'))).toBe(true)
   })
 })
