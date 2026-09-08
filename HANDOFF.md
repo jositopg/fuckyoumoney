@@ -17,7 +17,7 @@
 2. Supabase FYM `jwcrrnevvtxaycsqjmem` ≠ Finca `emkihlljnhykevlehprh`.
 3. Hipotecas (principal) en FYM `liabilities`. Finca no las modela.
 4. Sin chat embebido. Sin `api/ai.js`.
-5. `~/.fuckyoumoney-db.env` todavía **no existe** — Jose tiene que pasar la URI de Postgres FYM (Dashboard → Settings → Database). La de Finca no vale (probado).
+5. `~/.fuckyoumoney-db.env` **existe** (2026-09-08). Schema `001_wealth_os.sql` aplicado.
 
 ## Credenciales
 
@@ -25,7 +25,7 @@
 |---|---|
 | Finca Postgres | `~/.finca-db.env` |
 | FYM anon | Vercel `VITE_SUPABASE_*` |
-| FYM Postgres | **falta** `~/.fuckyoumoney-db.env` |
+| FYM Postgres | `~/.fuckyoumoney-db.env` |
 | Sync | Vercel `FINCA_DATABASE_URL` (ya está) |
 
 ## Estado
@@ -35,8 +35,8 @@
 - [x] Quitar chat IA de la app (2026-09-08)
 - [x] `scripts/dump-wealth.mjs` / `npm run wealth`
 - [x] Migración `001_wealth_os.sql` autoexplicativa (`ai_guide`, `patrimonio_ia()`, vistas, comentarios)
-- [ ] `~/.fuckyoumoney-db.env` + **aplicar** `001_wealth_os.sql` (hace falta la URI de Postgres FYM)
-- [ ] Jose: login en fuckyoumoney.vercel.app y sync Finca
+- [x] `~/.fuckyoumoney-db.env` + `001_wealth_os.sql` aplicado (`ai_guide`, vistas, tablas)
+- [ ] Jose: login en fuckyoumoney.vercel.app y sync Finca (FYM `assets` sigue en 0 filas)
 
 ## Cómo consultar el patrimonio
 
