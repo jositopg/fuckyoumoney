@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { lazy, Suspense } from 'react'
-import { MessageCircle, Plus, Settings } from 'lucide-react'
+import { Plus, Settings } from 'lucide-react'
 import type { Asset, AppData, StocksMetadata, CryptoMetadata, CommodityMetadata } from './types'
 import { CATEGORY_ORDER } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
@@ -44,9 +44,6 @@ const InsightsSheet = lazy(() =>
 const PhilosophySheet = lazy(() =>
   import('./components/PhilosophySheet').then(m => ({ default: m.PhilosophySheet }))
 )
-const AiChatSheet = lazy(() =>
-  import('./components/AiChatSheet').then(m => ({ default: m.AiChatSheet }))
-)
 
 const DEFAULT_DATA: AppData = {
   assets: [],
@@ -68,7 +65,6 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isPhilosophyOpen, setIsPhilosophyOpen] = useState(false)
   const [isInsightsOpen, setIsInsightsOpen] = useState(false)
-  const [isAiOpen, setIsAiOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [showExportReminder, setShowExportReminder] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -380,26 +376,15 @@ export default function App() {
         <span className="text-label font-display font-semibold text-on-surface/40 tracking-tight">
           F*ck You Money
         </span>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsAiOpen(true)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center
-              bg-surface-container-low text-on-surface/50
-              hover:bg-surface-container-highest hover:text-on-surface transition-all"
-            aria-label="Analista IA"
-          >
-            <MessageCircle size={17} />
-          </button>
-          <button
-            onClick={() => setIsSettingsOpen(true)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center
-              bg-surface-container-low text-on-surface/50
-              hover:bg-surface-container-highest hover:text-on-surface transition-all"
-            aria-label="Ajustes"
-          >
-            <Settings size={17} />
-          </button>
-        </div>
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center
+            bg-surface-container-low text-on-surface/50
+            hover:bg-surface-container-highest hover:text-on-surface transition-all"
+          aria-label="Ajustes"
+        >
+          <Settings size={17} />
+        </button>
       </header>
 
       <main className="px-5 pb-28 max-w-lg mx-auto lg:max-w-3xl">
@@ -559,12 +544,6 @@ export default function App() {
           assets={data.assets}
           monthlyExpenses={data.monthlyExpenses}
           snapshots={data.snapshots}
-        />
-
-        <AiChatSheet
-          isOpen={isAiOpen}
-          onClose={() => setIsAiOpen(false)}
-          loggedIn={Boolean(auth.user && cloudReady)}
         />
       </Suspense>
     </div>

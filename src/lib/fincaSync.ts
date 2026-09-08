@@ -19,22 +19,6 @@ export async function syncFincaFromApi(): Promise<{ snapshot: FincaSnapshot; ass
   return { snapshot, assets: snapshotToAssets(snapshot) }
 }
 
-export async function askWealthAi(message: string): Promise<string> {
-  if (!supabase) throw new Error('Supabase no configurado')
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (!token) throw new Error('Inicia sesión para hablar con la IA')
-
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
-  })
-  const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(json.error || `Error ${res.status}`)
-  return json.text as string
-}
-
 export function replaceFincaAssets(current: Asset[], fincaAssets: Asset[]): Asset[] {
   const withoutOldFinca = current.filter(a => a.source !== 'finca' && !a.readOnly)
   const withoutLocalDupes = withoutOldFinca.filter(a => {
