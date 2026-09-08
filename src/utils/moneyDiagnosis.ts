@@ -1,5 +1,5 @@
 import type { Asset, CashJob, CashMetadata, DebtMetadata, RealEstateMetadata } from '../types'
-import { formatEur, getTotalMonthlyDebtPayments } from './calculations'
+import { formatEur, getTotalMonthlyDebtPayments, getTotalPositiveAssets } from './calculations'
 
 export const DEFAULT_EMERGENCY_MONTHS = 6
 
@@ -46,7 +46,7 @@ export interface DiagnosisQuestion {
 }
 
 /** What to do with a slice of capital. Not which fund or which piso. */
-export type CapitalStance = 'leave' | 'deploy' | 'operate' | 'pay_down' | 'classify'
+export type CapitalStance = 'leave' | 'deploy' | 'operate' | 'pay_down' | 'classify' | 'divest'
 
 export const CAPITAL_STANCE_LABELS: Record<CapitalStance, string> = {
   leave: 'Dejar',
@@ -54,6 +54,23 @@ export const CAPITAL_STANCE_LABELS: Record<CapitalStance, string> = {
   operate: 'Poner a producir',
   pay_down: 'Liquidar',
   classify: 'Asignar',
+  divest: 'Reducir ladrillo',
+}
+
+/** Brick-heavy mix: sell only if a rent stop would force a fire sale. */
+export type MixStance = 'ok' | 'rebalance_with_cash' | 'divest_brick' | 'unknown'
+
+export interface MixAnalysis {
+  totalAssets: number
+  realEstatePct: number
+  cashPct: number
+  investedPct: number
+  shockMonths: number | null
+  shockTargetMonths: number
+  incomeFromRePct: number | null
+  stance: MixStance
+  headline: string
+  detail: string
 }
 
 export interface CapitalMove {
@@ -69,6 +86,7 @@ export interface WealthDiagnosis {
   headline: string
   buckets: MoneyBuckets
   realEstate: RealEstateYield
+  mix: MixAnalysis
   capital: {
     invested: number
     deployable: number
@@ -223,6 +241,86 @@ export function investedMarket(assets: Asset[]): number {
     .reduce((s, a) => s + a.value, 0)
 }
 
+function sharePct(part: number, total: number): number {
+  if (total <= 0) return 0
+  return Math.round((part / total) * 1000) / 10
+}
+
+export function mixAnalysis(args: {
+  assets: Asset[]
+  buckets: MoneyBuckets
+  re: RealEstateYield
+  invested: number
+  monthlyExpenses: number
+  monthlyNetPassive: number
+}): MixAnalysis {
+  const { buckets, re, invested, monthlyExpenses, monthlyNetPassive } = args
+  const totalAssets = getTotalPositiveAssets(args.assets)
+  const cash = buckets.unparked + buckets.parked
+  const realEstatePct = sharePct(re.value, totalAssets)
+  const cashPct = sharePct(cash, totalAssets)
+  const investedPct = sharePct(invested, totalAssets)
+  const concentrated = realEstatePct >= 60
+  const shockTargetMonths = concentrated ? 12 : 6
+  const shockMonths =
+    monthlyExpenses > 0 ? Math.round((buckets.unparked / monthlyExpenses) * 10) / 10 : null
+  const incomeFromRePct =
+    monthlyNetPassive > 0 ? sharePct(re.monthlyNet, monthlyNetPassive) : re.monthlyNet > 0 ? 100 : null
+
+  let stance: MixStance = 'ok'
+  let headline: string
+  let detail: string
+
+  if (totalAssets <= 0 || re.properties === 0) {
+    stance = 'ok'
+    headline = 'Sin ladrillo no hay sesgo inmobiliario que juzgar.'
+    detail = 'La mezcla se mira cuando hay inmuebles y otra cosa al lado.'
+  } else if (!(monthlyExpenses > 0)) {
+    stance = 'unknown'
+    headline = `El ladrillo es el ${realEstatePct}% del patrimonio.`
+    detail = `Efectivo ${cashPct}% · fondos ${investedPct}%. Sin tu gasto no se sabe si el efectivo aguanta un parón de alquiler. No vendas hasta saberlo.`
+  } else if (!concentrated) {
+    stance = 'ok'
+    headline = `La mezcla no está atrapada en ladrillo (${realEstatePct}%).`
+    detail =
+      shockMonths != null
+        ? `Si el alquiler para, el efectivo cubre ${shockMonths} meses. Eso es holgura, no un incendio.`
+        : 'Hay margen fuera del inmueble.'
+  } else if (shockMonths != null && shockMonths < 6) {
+    stance = 'divest_brick'
+    headline = `Si el alquiler para, el efectivo no llega a 6 meses.`
+    detail = `Ladrillo ${realEstatePct}% · efectivo ${cashPct}%. Equilibrar aquí es vender (empieza por vacíos), no aportar a fondos: eso te dejaría aún menos colchón.`
+  } else if (shockMonths != null && shockMonths < shockTargetMonths && re.vacant >= 2) {
+    stance = 'divest_brick'
+    headline = `El ladrillo pesa ${realEstatePct}% y hay ${re.vacant} vacíos.`
+    detail = `Si el alquiler para, el efectivo cubre ${shockMonths} meses (objetivo ${shockTargetMonths} con tanto inmueble). Los vacíos son los candidatos a vender; lo que ya alquila, no.`
+  } else if (shockMonths != null && shockMonths >= 6 && investedPct < 15) {
+    stance = 'rebalance_with_cash'
+    headline = `El ladrillo pesa ${realEstatePct}%, pero no hace falta vender.`
+    detail = `Si el alquiler para, el efectivo cubre ${shockMonths} meses. El equilibrio sale de poner el sobrante en fondos, no de deshacer pisos. Casi toda la renta neta sale del alquiler; los fondos diversifican esa renta.`
+  } else {
+    stance = 'ok'
+    headline = `Ladrillo ${realEstatePct}%, y hay colchón de golpe.`
+    detail =
+      shockMonths != null
+        ? `El efectivo cubre ${shockMonths} meses si el alquiler para. Fondos ${investedPct}%.`
+        : `Fondos ${investedPct}% · efectivo ${cashPct}%.`
+  }
+
+  return {
+    totalAssets,
+    realEstatePct,
+    cashPct,
+    investedPct,
+    shockMonths,
+    shockTargetMonths,
+    incomeFromRePct,
+    stance,
+    headline,
+    detail,
+  }
+}
+
 /** Cash that can go to funds after the cushion. 0 until monthly expenses are known. */
 export function deployableCash(
   buckets: MoneyBuckets,
@@ -256,6 +354,14 @@ export function diagnoseWealth(
   const deployable = deployableCash(buckets, emergencyTarget, monthlyExpenses)
   const expenseCoverage =
     monthlyExpenses > 0 ? Math.round((monthlyNetPassive / monthlyExpenses) * 1000) / 1000 : null
+  const mix = mixAnalysis({
+    assets,
+    buckets,
+    re,
+    invested,
+    monthlyExpenses,
+    monthlyNetPassive,
+  })
 
   const missing: string[] = []
   const questions: DiagnosisQuestion[] = []
@@ -360,7 +466,7 @@ export function diagnoseWealth(
     })
   }
 
-  if (deployable > 0) {
+  if (deployable > 0 && mix.stance !== 'divest_brick') {
     actions.push({
       id: 'deploy_idle',
       title: 'El sobrante tiene que rendir',
@@ -372,9 +478,11 @@ export function diagnoseWealth(
       amount: Math.round(deployable),
       title: buckets.emergencyAssumed ? 'Sobrante de cuentas → que rinda' : 'Efectivo parado → que rinda',
       detail:
-        invested > 0
-          ? 'Aportar a lo que ya está invertido. No hace falta un tracker: el valor al abrir la app es la foto.'
-          : 'A fondos. No hace falta elegir el producto aquí, ni seguir el mercado cada día.',
+        mix.stance === 'rebalance_with_cash'
+          ? 'Eso equilibra el ladrillo sin vender pisos. El valor al abrir la app es la foto.'
+          : invested > 0
+            ? 'Aportar a lo que ya está invertido. No hace falta un tracker: el valor al abrir la app es la foto.'
+            : 'A fondos. No hace falta elegir el producto aquí, ni seguir el mercado cada día.',
     })
   } else if (buckets.idle > 0 && !(buckets.emergencyAssumed && emergencyGap > 0) && monthlyExpenses <= 0) {
     actions.push({
@@ -399,7 +507,20 @@ export function diagnoseWealth(
     })
   }
 
-  if (re.vacant > 0) {
+  if (re.vacant > 0 && mix.stance === 'divest_brick') {
+    actions.push({
+      id: 'divest_vacant',
+      title: `Reducir ladrillo: ${re.vacant} vacío${re.vacant === 1 ? '' : 's'}`,
+      detail: 'Si pasa algo, no hay efectivo de sobra. Los vacíos son los que se venden; lo alquilado, no.',
+    })
+    moves.push({
+      id: 'divest_vacant',
+      stance: 'divest',
+      amount: null,
+      title: `${re.vacant} inmueble${re.vacant === 1 ? '' : 's'} vacío${re.vacant === 1 ? '' : 's'} → vender`,
+      detail: 'No aportes ese dinero a más ladrillo. A colchón y fondos. Se decide en Finca.',
+    })
+  } else if (re.vacant > 0) {
     actions.push({
       id: 'vacant_re',
       title: `${re.vacant} inmueble${re.vacant === 1 ? '' : 's'} vacío${re.vacant === 1 ? '' : 's'}`,
@@ -410,7 +531,20 @@ export function diagnoseWealth(
       stance: 'operate',
       amount: null,
       title: `${re.vacant} inmueble${re.vacant === 1 ? '' : 's'} vacío${re.vacant === 1 ? '' : 's'}`,
-      detail: 'No es vender para comprar fondos. Es poner ese ladrillo a producir. Se gestiona en Finca.',
+      detail:
+        mix.stance === 'rebalance_with_cash'
+          ? 'Ponerlos a producir. El equilibrio de la mezcla sale del efectivo a fondos, no de vender lo que ya tienes alquilado.'
+          : 'Ponerlos a producir. Vender solo si el golpe de liquidez no se cubre con efectivo.',
+    })
+  }
+
+  if (mix.stance === 'divest_brick' && re.vacant === 0) {
+    moves.push({
+      id: 'divest_brick',
+      stance: 'divest',
+      amount: null,
+      title: 'Reducir ladrillo',
+      detail: mix.detail,
     })
   }
 
@@ -435,7 +569,14 @@ export function diagnoseWealth(
   let verdict: Verdict = 'solid'
   if (!(monthlyExpenses > 0)) verdict = 'unknown'
   else if (pricey.length > 0 || (emergencyMonths != null && emergencyMonths < 1)) verdict = 'weak'
-  else if (emergencyGap > 0 || buckets.idle > 0 || deployable > 0 || re.vacant > 0) verdict = 'ok'
+  else if (
+    emergencyGap > 0 ||
+    buckets.idle > 0 ||
+    deployable > 0 ||
+    re.vacant > 0 ||
+    mix.stance === 'divest_brick'
+  )
+    verdict = 'ok'
 
   let headline: string
   if (verdict === 'unknown') {
@@ -466,6 +607,7 @@ export function diagnoseWealth(
     headline,
     buckets,
     realEstate: re,
+    mix,
     capital: {
       invested,
       deployable: Math.round(deployable),

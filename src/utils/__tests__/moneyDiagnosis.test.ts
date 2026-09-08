@@ -263,5 +263,79 @@ describe('diagnoseWealth', () => {
     expect(d.realEstate.netYieldPct).toBe(3.6)
     expect(d.cashflow.monthlyNetPassive).toBeGreaterThan(d.realEstate.monthlyNet)
     expect(d.headline).toMatch(/netos al año/)
+    expect(d.mix.stance).toBe('rebalance_with_cash')
+    expect(d.moves.some(m => m.stance === 'divest')).toBe(false)
+  })
+
+  it('does not sell brick when cash already covers a rent stop', () => {
+    const d = diagnoseWealth(
+      [
+        asset({ category: 'cash', name: 'Caja', value: 400000 }),
+        asset({
+          category: 'real_estate',
+          name: 'Piso',
+          value: 1500000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 800,
+            ttmNetCashflow: 6000,
+            valueSource: 'mercado',
+          },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Vacío',
+          value: 100000,
+          metadata: { propertyType: 'alquiler', status: 'vacio', valueSource: 'mercado' },
+        }),
+      ],
+      2000,
+      6
+    )
+    expect(d.mix.realEstatePct).toBeGreaterThan(70)
+    expect(d.mix.shockMonths).toBeGreaterThan(12)
+    expect(d.mix.stance).toBe('rebalance_with_cash')
+    expect(d.moves.some(m => m.stance === 'divest')).toBe(false)
+    expect(d.moves.some(m => m.id === 'deploy_idle')).toBe(true)
+    expect(d.moves.find(m => m.id === 'vacant_re')?.detail).toMatch(/fondos/)
+  })
+
+  it('recommends selling vacant brick when a rent stop would break the cash', () => {
+    const d = diagnoseWealth(
+      [
+        asset({ category: 'cash', name: 'Caja', value: 8000 }),
+        asset({
+          category: 'real_estate',
+          name: 'Alquilado',
+          value: 180000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 700,
+            ttmNetCashflow: 5000,
+            valueSource: 'mercado',
+          },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Vacío 1',
+          value: 90000,
+          metadata: { propertyType: 'alquiler', status: 'vacio', valueSource: 'mercado' },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Vacío 2',
+          value: 80000,
+          metadata: { propertyType: 'alquiler', status: 'vacio', valueSource: 'mercado' },
+        }),
+      ],
+      2000,
+      6
+    )
+    expect(d.mix.stance).toBe('divest_brick')
+    expect(d.mix.shockMonths).toBe(4)
+    expect(d.moves.some(m => m.id === 'deploy_idle')).toBe(false)
+    expect(d.moves.some(m => m.id === 'divest_vacant' && m.stance === 'divest')).toBe(true)
   })
 })

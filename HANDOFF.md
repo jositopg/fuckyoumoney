@@ -11,7 +11,8 @@
 - **FYM**: inventario del patrimonio. Portada = neto + veredicto + efectivo (emergencia/aparcado/rinde/parado) + inmuebles (valor y neto) + asignación + posiciones.
 - **IA: no va en la app.** Grok lee SQL (`npm run wealth` / `patrimonio_ia()`), que ya trae `diagnosis.verdict`.
 - Efectivo tiene un trabajo. El colchón no son los fondos. El alquiler bruto no es el neto.
-- No hay análisis en tiempo real de inversiones. Hay foto + `moves` (dejar / mover a que rinda / producir).
+- No hay análisis en tiempo real de inversiones. Hay foto + `moves` (dejar / mover a que rinda / producir / reducir ladrillo).
+- Mezcla: vender ladrillo solo si un parón de alquiler no se cubre con efectivo. Si se cubre, el equilibrio es efectivo → fondos.
 
 ## Decisiones
 

@@ -61,7 +61,8 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - Efectivo tiene un trabajo: `emergency` | `parked` | `working` | `idle`. parked exige motivo.
 - Inmuebles: valor **y** `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio.
-- No hay tracker en tiempo real. Fondos = valor al abrir. `diagnosis.moves`: leave / deploy / operate / pay_down. Deploy = aportar a que rinda, no vender por el NAV.
+- No hay tracker en tiempo real. Fondos = valor al abrir. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
+- Mezcla (`diagnosis.mix`): ladrillo alto no implica vender. Si el efectivo aguanta un parón de alquiler, equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.
 - Inmuebles Finca no se editan ni se borran desde el formulario; se regeneran en el sync.
 - Tras cada commit: `git push`. Merge a `main` solo con build+test verdes.
 

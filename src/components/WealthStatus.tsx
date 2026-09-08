@@ -6,6 +6,7 @@ import {
   diagnoseWealth,
   type CapitalMove,
   type DiagnosisQuestion,
+  type MixAnalysis,
 } from '../utils/moneyDiagnosis'
 
 interface WealthStatusProps {
@@ -71,6 +72,8 @@ export function WealthStatus({
           </div>
         )}
       </section>
+
+      {d.mix.totalAssets > 0 && <MixCard mix={d.mix} />}
 
       {d.moves.length > 0 && (
         <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
@@ -173,6 +176,43 @@ const STANCE_TONE: Record<string, string> = {
   operate: 'text-on-surface',
   pay_down: 'text-error',
   classify: 'text-on-surface/70',
+  divest: 'text-error',
+}
+
+const MIX_LABEL: Record<MixAnalysis['stance'], string> = {
+  ok: 'Mezcla',
+  rebalance_with_cash: 'Mezcla · no vender',
+  divest_brick: 'Mezcla · reducir ladrillo',
+  unknown: 'Mezcla',
+}
+
+function MixCard({ mix }: { mix: MixAnalysis }) {
+  return (
+    <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
+      <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
+        {MIX_LABEL[mix.stance]}
+      </h3>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-label font-body tabular-nums mb-3">
+        <span className="text-on-surface">
+          Ladrillo <span className="font-semibold">{mix.realEstatePct}%</span>
+        </span>
+        <span className="text-on-surface/70">
+          Efectivo <span className="font-semibold">{mix.cashPct}%</span>
+        </span>
+        <span className="text-on-surface/70">
+          Fondos <span className="font-semibold">{mix.investedPct}%</span>
+        </span>
+      </div>
+      <p className="text-body font-medium text-on-surface font-body leading-relaxed">{mix.headline}</p>
+      <p className="text-label-sm text-on-surface/50 font-body mt-1.5 leading-relaxed">{mix.detail}</p>
+      {mix.shockMonths != null && (
+        <p className="text-label-sm text-on-surface/45 font-body mt-2">
+          Si el alquiler para: {mix.shockMonths} meses de efectivo
+          {mix.shockTargetMonths > 6 ? ` · con tanto ladrillo, holgura ${mix.shockTargetMonths} meses` : ''}
+        </p>
+      )}
+    </section>
+  )
 }
 
 function MoveRow({ move }: { move: CapitalMove }) {
