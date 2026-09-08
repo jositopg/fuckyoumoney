@@ -9,7 +9,7 @@ import type {
   DebtMetadata,
   StocksMetadata,
 } from '../types'
-import { CASH_JOB_LABELS, CATEGORY_LABELS } from '../types'
+import { CASH_JOB_LABELS, CASH_PURPOSE_JOBS, CATEGORY_LABELS, PARKED_REASON_PRESETS } from '../types'
 import { BottomSheet } from './BottomSheet'
 
 interface AssetFormProps {
@@ -79,7 +79,9 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       const cm = editAsset.metadata as CashMetadata | DebtMetadata | undefined
       setInterestRate(cm?.interestRate != null ? String(cm.interestRate) : '')
       const cashMeta = editAsset.metadata as CashMetadata | undefined
-      setCashJob(cashMeta?.job || ((cashMeta?.interestRate ?? 0) > 0 ? 'working' : 'idle'))
+      setCashJob(
+        cashMeta?.job === 'emergency' || cashMeta?.job === 'parked' ? cashMeta.job : 'idle'
+      )
       setParkedReason(cashMeta?.parkedReason || '')
       setNotes(editAsset.notes || '')
       setShowMore(Boolean(editAsset.symbol || dm?.monthlyPayment || editAsset.notes))
@@ -119,6 +121,10 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
     }
     if (Number.isNaN(v) || v < 0) {
       setError('Importe no válido')
+      return
+    }
+    if (kind === 'cash' && cashJob === 'parked' && !parkedReason.trim()) {
+      setError('Di el motivo del apartado (reforma, juicio, impuestos…)')
       return
     }
 
@@ -270,8 +276,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
           {kind === 'cash' && (
             <div>
               <p className="text-label font-medium text-on-surface/70 mb-2 font-body">Para qué es</p>
-              <div className="grid grid-cols-2 gap-2">
-                {(Object.keys(CASH_JOB_LABELS) as CashJob[]).map(job => (
+              <div className="grid grid-cols-3 gap-2">
+                {CASH_PURPOSE_JOBS.map(job => (
                   <button
                     key={job}
                     type="button"
@@ -284,16 +290,43 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                   </button>
                 ))}
               </div>
+              <p className="text-label-sm text-on-surface/45 font-body mt-2 leading-relaxed">
+                {cashJob === 'emergency' &&
+                  'Vida. Puede estar en cuenta remunerada; eso no es invertirlo.'}
+                {cashJob === 'parked' &&
+                  'Un gasto concreto: reforma, juicio, impuestos, entrada… No es el colchón.'}
+                {cashJob === 'idle' && 'Sin motivo. Debería estar en fondos, no en cuenta.'}
+              </p>
               {cashJob === 'parked' && (
-                <input
-                  value={parkedReason}
-                  onChange={e => setParkedReason(e.target.value)}
-                  placeholder="Motivo: impuestos, entrada, reforma…"
-                  className={inputClass + ' mt-2'}
-                />
+                <div className="mt-2 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {PARKED_REASON_PRESETS.map(preset => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setParkedReason(preset)}
+                        className={`rounded-lg px-3 py-1.5 text-label-sm font-body ${
+                          parkedReason === preset
+                            ? 'bg-primary text-on-primary'
+                            : 'bg-surface-container-highest text-on-surface/70'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    value={parkedReason}
+                    onChange={e => setParkedReason(e.target.value)}
+                    placeholder="Motivo concreto"
+                    className={inputClass}
+                  />
+                </div>
               )}
               <div className="mt-3">
-                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">TAE % (si rinde)</label>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
+                  TAE % {cashJob === 'idle' ? '(no sustituye a invertirlo)' : '(opcional)'}
+                </label>
                 <input
                   inputMode="decimal"
                   value={interestRate}

@@ -58,7 +58,7 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - Importes UI en EUR, locale `es-ES` (`formatEur`).
 - Autonomía (legado) = `(líquido − deudas) / gastos mensuales`. Líquido = cash + stocks + crypto.
 - Colchón de emergencia = efectivo `job=emergency` (si nadie está tagged, el efectivo no aparcado). Nunca fondos ni cripto.
-- Efectivo tiene un trabajo: `emergency` | `parked` | `working` | `idle`. parked exige motivo.
+- Efectivo: `emergency` (colchón, puede remunerar) | `parked` (apartado con motivo: reforma, juicio…) | el resto a fondos. TAE no es invertirlo.
 - Inmuebles: valor **y** `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio.
 - No hay tracker en tiempo real. Fondos = valor al abrir. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.

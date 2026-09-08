@@ -15,6 +15,8 @@ export interface MoneyBuckets {
   /** Cash tagged emergency; 0 if none tagged. */
   emergencyAssigned: number
   unparked: number
+  /** idle + working: not cushion, not earmarked → should be invested. */
+  toInvest: number
 }
 
 export interface RealEstateYield {
@@ -116,10 +118,9 @@ const HABITUAL_STATUS = new Set(['vivienda_habitual', 'uso_propio'])
 
 export function cashJob(asset: Asset): CashJob {
   const m = asset.metadata as CashMetadata | undefined
-  if (m?.job === 'parked' || m?.job === 'emergency' || m?.job === 'working' || m?.job === 'idle') {
-    return m.job
-  }
-  if ((m?.interestRate ?? 0) > 0) return 'working'
+  if (m?.job === 'parked' || m?.job === 'emergency' || m?.job === 'idle') return m.job
+  // Legacy `working` (TAE without a purpose) is cash that should be invested.
+  if (m?.job === 'working') return 'idle'
   return 'idle'
 }
 
@@ -127,26 +128,37 @@ export function moneyBuckets(assets: Asset[]): MoneyBuckets {
   const cash = assets.filter(a => a.category === 'cash')
   let emergencyAssigned = 0
   let parked = 0
-  let working = 0
   let idle = 0
   for (const a of cash) {
     const job = cashJob(a)
     if (job === 'emergency') emergencyAssigned += a.value
     else if (job === 'parked') parked += a.value
-    else if (job === 'working') working += a.value
     else idle += a.value
   }
-  const unparked = emergencyAssigned + working + idle
+  const unparked = emergencyAssigned + idle
   const emergencyAssumed = emergencyAssigned <= 0 && unparked > 0
   return {
     emergency: emergencyAssumed ? unparked : emergencyAssigned,
     parked,
-    working,
+    working: 0,
     idle,
     emergencyAssumed,
     emergencyAssigned,
     unparked,
+    toInvest: idle,
   }
+}
+
+export function parkedSlices(assets: Asset[]): { reason: string; value: number }[] {
+  const byReason = new Map<string, number>()
+  for (const a of assets) {
+    if (a.category !== 'cash' || cashJob(a) !== 'parked') continue
+    const reason = (a.metadata as CashMetadata | undefined)?.parkedReason?.trim() || 'Sin motivo'
+    byReason.set(reason, (byReason.get(reason) ?? 0) + a.value)
+  }
+  return [...byReason.entries()]
+    .map(([reason, value]) => ({ reason, value }))
+    .sort((a, b) => b.value - a.value)
 }
 
 export function realEstateYield(assets: Asset[]): RealEstateYield {
@@ -329,7 +341,7 @@ export function deployableCash(
 ): number {
   if (!(monthlyExpenses > 0)) return 0
   if (buckets.emergencyAssumed) return Math.max(0, buckets.unparked - emergencyTarget)
-  return Math.max(0, buckets.idle)
+  return Math.max(0, buckets.toInvest)
 }
 
 export function diagnoseWealth(
@@ -385,11 +397,11 @@ export function diagnoseWealth(
     })
   }
 
-  if (buckets.idle > 0) {
+  if (buckets.toInvest > 0) {
     questions.push({
       id: 'idle_cash',
-      prompt: `Hay ${formatEur(buckets.idle)} parados. ¿Es colchón, está aparcado por algo, o sobra para que rinda?`,
-      why: 'El efectivo sin trabajo ni motivo es el hueco más fácil de leer — y el que más distorsiona un diagnóstico.',
+      prompt: `Hay ${formatEur(buckets.toInvest)} que no son colchón ni un apartado. ¿Van a fondos, o tienen un motivo (reforma, juicio, impuestos…)?`,
+      why: 'Solo hay dos razones para dejar efectivo: colchón de vida, o un gasto concreto. Una cuenta remunerada no es invertirlo.',
     })
   }
 
@@ -398,8 +410,8 @@ export function diagnoseWealth(
     const names = parkedBlank.map(a => a.name).join(', ')
     questions.push({
       id: 'parked_reason',
-      prompt: `¿Para qué está aparcado el dinero de ${names}?`,
-      why: 'Si no hay motivo (impuestos, entrada, reforma, reserva), no está aparcado: está parado.',
+      prompt: `¿Para qué está apartado el dinero de ${names}? (reforma, juicio, impuestos, entrada…)`,
+      why: 'Sin motivo concreto no está apartado: sobra, y sobra debería estar invertido.',
     })
   }
 
@@ -447,7 +459,7 @@ export function diagnoseWealth(
       stance: 'leave',
       amount: Math.round(emergencyGap),
       title: `Apartar a colchón (${targetMonths} meses)`,
-      detail: 'Ese trozo se deja en efectivo. No va a fondos.',
+      detail: 'Se queda en efectivo. Puede estar en cuenta remunerada; eso no lo convierte en inversión.',
     })
   }
 
@@ -462,48 +474,35 @@ export function diagnoseWealth(
       stance: 'leave',
       amount: Math.round(emergencyTarget),
       title: `Colchón (${targetMonths} meses)`,
-      detail: 'Se queda en efectivo. Márcalo en las cuentas para no volver a mezclarlo.',
+      detail: 'Se queda en efectivo. Puede estar remunerado. Márcalo como colchón para no mezclarlo con lo que va a fondos.',
     })
   }
 
   if (deployable > 0 && mix.stance !== 'divest_brick') {
     actions.push({
       id: 'deploy_idle',
-      title: 'El sobrante tiene que rendir',
-      detail: `${formatEur(deployable)} no son colchón. A fondos (u otro activo que rinda). Eligiendo el fondo no se gana; moviéndolo, sí.`,
+      title: 'El sobrante tiene que invertirse',
+      detail: `${formatEur(deployable)} no son colchón ni un apartado. A fondos. Una TAE de cuenta no cuenta.`,
     })
     moves.push({
       id: 'deploy_idle',
       stance: 'deploy',
       amount: Math.round(deployable),
-      title: buckets.emergencyAssumed ? 'Sobrante de cuentas → que rinda' : 'Efectivo parado → que rinda',
+      title: buckets.emergencyAssumed
+        ? 'Sobrante de cuentas → fondos'
+        : 'Ni colchón ni apartado → fondos',
       detail:
         mix.stance === 'rebalance_with_cash'
-          ? 'Eso equilibra el ladrillo sin vender pisos. El valor al abrir la app es la foto.'
+          ? 'Eso equilibra el ladrillo sin vender pisos. TAE de cuenta no es invertirlo.'
           : invested > 0
-            ? 'Aportar a lo que ya está invertido. No hace falta un tracker: el valor al abrir la app es la foto.'
-            : 'A fondos. No hace falta elegir el producto aquí, ni seguir el mercado cada día.',
+            ? 'Aportar a lo que ya está invertido. TAE de cuenta no cuenta como fondo.'
+            : 'A fondos. No hace falta elegir el producto aquí.',
     })
-  } else if (buckets.idle > 0 && !(buckets.emergencyAssumed && emergencyGap > 0) && monthlyExpenses <= 0) {
+  } else if (buckets.toInvest > 0 && !(buckets.emergencyAssumed && emergencyGap > 0) && monthlyExpenses <= 0) {
     actions.push({
       id: 'assign_idle',
-      title: 'Ponle un trabajo al efectivo parado',
-      detail: `${formatEur(buckets.idle)} al 0% y sin motivo. O es emergencia, o está aparcado, o debería rendir.`,
-    })
-  }
-
-  if (
-    buckets.working > 0 &&
-    monthlyExpenses > 0 &&
-    emergencyGap <= 0 &&
-    buckets.working >= monthlyExpenses
-  ) {
-    moves.push({
-      id: 'working_surplus',
-      stance: 'deploy',
-      amount: Math.round(buckets.working),
-      title: 'Efectivo que rinde poco',
-      detail: 'TAE de cuenta no es un fondo. Si no lo vas a gastar en 1–3 años, también a que rinda de verdad.',
+      title: 'Parte el efectivo: colchón, apartado, o fondos',
+      detail: `${formatEur(buckets.toInvest)} sin motivo. O es colchón, o está apartado (reforma, juicio…), o va a fondos.`,
     })
   }
 
@@ -590,9 +589,9 @@ export function diagnoseWealth(
   } else if (emergencyGap > 0) {
     headline = `Colchón: ${emergencyMonths} meses. Te faltan ${formatEur(Math.round(emergencyGap))} para llegar a ${targetMonths}.`
   } else if (deployable > 0) {
-    headline = `El colchón está. ${formatEur(deployable)} deberían estar rindiendo, no en cuenta.`
-  } else if (buckets.idle > 0) {
-    headline = `El colchón está. ${formatEur(buckets.idle)} están parados al 0%.`
+    headline = `El colchón está. ${formatEur(deployable)} no tienen motivo: a fondos.`
+  } else if (buckets.toInvest > 0) {
+    headline = `El colchón está. ${formatEur(buckets.toInvest)} deberían estar invertidos.`
   } else if (re.properties > 0) {
     headline =
       re.ttmNetCashflow !== 0

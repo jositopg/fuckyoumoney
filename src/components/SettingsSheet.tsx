@@ -167,7 +167,8 @@ export function SettingsSheet({
               focus:ring-primary/30 transition-all"
           />
           <p className="text-label-sm text-on-surface/50 mt-2 font-body leading-relaxed">
-            Efectivo que no tocas. El resto, o rinde, o está aparcado por un motivo concreto.
+            Colchón de vida. Puede estar en cuenta remunerada. Lo que no sea colchón ni un
+            apartado con motivo (reforma, juicio, impuestos…) debería estar en fondos.
           </p>
         </div>
 

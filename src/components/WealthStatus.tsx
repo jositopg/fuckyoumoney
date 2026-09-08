@@ -1,9 +1,9 @@
 import type { Asset } from '../types'
-import { CASH_JOB_LABELS } from '../types'
 import { formatEur } from '../utils/calculations'
 import {
   CAPITAL_STANCE_LABELS,
   diagnoseWealth,
+  parkedSlices,
   type CapitalMove,
   type DiagnosisQuestion,
   type MixAnalysis,
@@ -95,28 +95,33 @@ export function WealthStatus({
           </h3>
           <ul className="space-y-2">
             <BucketRow
-              label={CASH_JOB_LABELS.emergency}
+              label="Colchón"
               value={buckets.emergencyAssigned}
               hint={
                 buckets.emergencyAssumed
                   ? 'sin asignar'
                   : cashflow.emergencyMonths != null
-                    ? `${cashflow.emergencyMonths} meses`
-                    : undefined
+                    ? `${cashflow.emergencyMonths} meses · puede remunerar`
+                    : 'puede remunerar'
               }
               muted={buckets.emergencyAssumed}
             />
             <BucketRow
-              label={CASH_JOB_LABELS.parked}
+              label="Apartado"
               value={buckets.parked}
-              hint={buckets.parked > 0 ? 'con motivo' : undefined}
+              hint={
+                buckets.parked > 0
+                  ? parkedSlices(assets)
+                      .map(s => s.reason)
+                      .join(', ')
+                  : 'reforma, juicio…'
+              }
             />
-            <BucketRow label={CASH_JOB_LABELS.working} value={buckets.working} hint="con TAE" />
             <BucketRow
-              label={CASH_JOB_LABELS.idle}
-              value={buckets.idle}
-              hint={buckets.idle > 0 ? 'al 0%, sin motivo' : undefined}
-              warn={buckets.idle > 0}
+              label="A invertir"
+              value={buckets.toInvest}
+              hint={buckets.toInvest > 0 ? 'ni colchón ni apartado' : undefined}
+              warn={buckets.toInvest > 0}
             />
           </ul>
         </section>

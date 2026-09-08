@@ -118,7 +118,7 @@ export function buildWealthBrief(
   const notesForModel = [
     'Cifras en EUR. No inventes números que no estén en este JSON.',
     'Lee diagnosis.verdict y diagnosis.headline antes de opinar. Las acciones ya están ordenadas.',
-    'Efectivo: emergency / parked / working / idle. parked no es colchón. stocks/crypto NO son emergencia.',
+    'Efectivo: emergency = colchón (puede tener TAE). parked = apartado con motivo (reforma, juicio, impuestos…). Todo lo demás (idle/working legacy) = a fondos. TAE de cuenta NO es invertirlo.',
     'Lee diagnosis.moves y diagnosis.mix. mix.stance: ok | rebalance_with_cash | divest_brick | unknown.',
     'Ladrillo alto NO implica vender. Si el efectivo aguanta un parón de alquiler (≥6–12 meses), equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.',
     'Lee diagnosis.moves: leave / deploy / operate / pay_down / classify / divest. Deploy = aportar a que rinda (fondos), no vender fondos por el NAV del día.',

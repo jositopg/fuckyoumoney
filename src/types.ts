@@ -14,20 +14,25 @@ export type AssetCategory =
 // Per-category metadata — all fields optional for backwards compatibility
 export type CashJob = 'emergency' | 'parked' | 'working' | 'idle'
 
+/** Purpose of cash. `working` is legacy: TAE is a property, not a reason to keep cash. */
 export const CASH_JOB_LABELS: Record<CashJob, string> = {
-  emergency: 'Emergencia',
-  parked: 'Aparcado',
-  working: 'Rinde',
-  idle: 'Parado',
+  emergency: 'Colchón',
+  parked: 'Apartado',
+  working: 'A invertir',
+  idle: 'A invertir',
 }
+
+export const CASH_PURPOSE_JOBS: CashJob[] = ['emergency', 'parked', 'idle']
+
+export const PARKED_REASON_PRESETS = ['Reforma', 'Juicio', 'Impuestos', 'Entrada'] as const
 
 export interface CashMetadata {
   accountType?: 'corriente' | 'ahorro' | 'remunerada' | 'nomina' | 'otro'
   interestRate?: number    // annual % for remunerada/ahorro accounts
   lastInterestUpdate?: string // ISO date — last time compound interest was applied
-  /** What this cash is for. Default: idle (or working if interestRate > 0). */
+  /** What this cash is for. Default: idle (should be invested). TAE does not change the job. */
   job?: CashJob
-  /** Required in practice when job=parked — e.g. impuestos, entrada, reforma. */
+  /** Required when job=parked — reformas, juicios, impuestos, entrada… */
   parkedReason?: string
   /** When parked money becomes free (ISO date). */
   availableFrom?: string

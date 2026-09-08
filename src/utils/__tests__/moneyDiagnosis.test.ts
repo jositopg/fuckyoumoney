@@ -27,10 +27,20 @@ describe('cashJob', () => {
     expect(cashJob(asset({ category: 'cash', name: 'A', value: 100 }))).toBe('idle')
   })
 
-  it('infers working from TAE when job is missing', () => {
+  it('does not treat TAE as a reason to keep cash', () => {
     expect(
       cashJob(asset({ category: 'cash', name: 'A', value: 100, metadata: { interestRate: 2 } }))
-    ).toBe('working')
+    ).toBe('idle')
+    expect(
+      cashJob(
+        asset({
+          category: 'cash',
+          name: 'A',
+          value: 100,
+          metadata: { job: 'working', interestRate: 2 },
+        })
+      )
+    ).toBe('idle')
   })
 
   it('keeps parked even with TAE', () => {
@@ -59,8 +69,8 @@ describe('moneyBuckets', () => {
     expect(b).toMatchObject({
       emergency: 6000,
       parked: 4000,
-      working: 3000,
-      idle: 2000,
+      idle: 5000,
+      toInvest: 5000,
       emergencyAssumed: false,
       emergencyAssigned: 6000,
     })
@@ -74,8 +84,8 @@ describe('moneyBuckets', () => {
     ])
     expect(b.emergencyAssumed).toBe(true)
     expect(b.emergency).toBe(7000)
-    expect(b.idle).toBe(5000)
-    expect(b.working).toBe(2000)
+    expect(b.idle).toBe(7000)
+    expect(b.toInvest).toBe(7000)
     expect(b.parked).toBe(1000)
   })
 })
@@ -158,7 +168,7 @@ describe('diagnoseWealth', () => {
     expect(d.buckets.idle).toBe(8000)
     expect(d.capital.deployable).toBe(8000)
     expect(d.moves.some(m => m.id === 'deploy_idle' && m.stance === 'deploy')).toBe(true)
-    expect(d.headline).toMatch(/rindiendo/)
+    expect(d.headline).toMatch(/fondos/)
     expect(d.verdict).toBe('ok')
   })
 
@@ -197,6 +207,38 @@ describe('diagnoseWealth', () => {
     expect(d.capital.deployable).toBe(0)
     expect(d.moves.some(m => m.stance === 'deploy')).toBe(false)
     expect(d.verdict).toBe('solid')
+  })
+
+  it('sends remunerated cash that is not cushion or earmarked to invest', () => {
+    const d = diagnoseWealth(
+      [
+        asset({
+          category: 'cash',
+          name: 'Colchón',
+          value: 12000,
+          metadata: { job: 'emergency', interestRate: 2 },
+        }),
+        asset({
+          category: 'cash',
+          name: 'Remunerada extra',
+          value: 20000,
+          metadata: { interestRate: 3 },
+        }),
+        asset({
+          category: 'cash',
+          name: 'Juicio',
+          value: 8000,
+          metadata: { job: 'parked', parkedReason: 'Juicio' },
+        }),
+      ],
+      2000,
+      6
+    )
+    expect(d.buckets.toInvest).toBe(20000)
+    expect(d.capital.deployable).toBe(20000)
+    expect(d.buckets.parked).toBe(8000)
+    expect(d.moves.find(m => m.id === 'deploy_idle')?.amount).toBe(20000)
+    expect(d.moves.some(m => m.amount === 8000 && m.stance === 'leave')).toBe(false)
   })
 
   it('returns 0 deployable until expenses are known', () => {
@@ -240,7 +282,7 @@ describe('diagnoseWealth', () => {
           category: 'cash',
           name: 'Remunerada',
           value: 5000,
-          metadata: { job: 'working', interestRate: 2 },
+          metadata: { job: 'emergency', interestRate: 2 },
         }),
         asset({
           category: 'real_estate',

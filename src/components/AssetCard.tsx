@@ -29,10 +29,9 @@ function getSecondaryLine(asset: Asset): string | null {
     case 'cash': {
       const cm = m as CashMetadata
       const parts = []
-      if (cm.job === 'emergency') parts.push('Emergencia')
-      else if (cm.job === 'parked') parts.push(cm.parkedReason ? `Aparcado · ${cm.parkedReason}` : 'Aparcado')
-      else if (cm.job === 'working') parts.push('Rinde')
-      else if (cm.job === 'idle') parts.push('Parado')
+      if (cm.job === 'emergency') parts.push('Colchón')
+      else if (cm.job === 'parked') parts.push(cm.parkedReason ? `Apartado · ${cm.parkedReason}` : 'Apartado')
+      else parts.push('A invertir')
       if (cm.interestRate) parts.push(`${cm.interestRate}% TAE`)
       return parts.join(' · ') || null
     }

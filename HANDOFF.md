@@ -13,6 +13,7 @@
 - Efectivo tiene un trabajo. El colchón no son los fondos. El alquiler bruto no es el neto.
 - No hay análisis en tiempo real de inversiones. Hay foto + `moves` (dejar / mover a que rinda / producir / reducir ladrillo).
 - Mezcla: vender ladrillo solo si un parón de alquiler no se cubre con efectivo. Si se cubre, el equilibrio es efectivo → fondos.
+- Efectivo: colchón (puede remunerar) o apartado con motivo. Todo lo demás, a fondos. TAE ≠ invertido.
 
 ## Decisiones
 
