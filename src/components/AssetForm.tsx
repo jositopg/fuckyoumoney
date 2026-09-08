@@ -24,6 +24,7 @@ import {
 } from '../types'
 import { BottomSheet } from './BottomSheet'
 import { isISIN } from '../utils/priceUpdater'
+import { inferInvestment, looksLikeInvestment } from '../utils/inferInvestment'
 
 interface AssetFormProps {
   isOpen: boolean
@@ -157,18 +158,17 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setError('Di el motivo del apartado (reforma, juicio, impuestos…)')
       return
     }
-    if (category === 'stocks' && !symbol.trim()) {
-      setError('Pon el ticker o el ISIN para identificar el fondo (VWCE.DE, IE00BK5BQT80…)')
-      return
+    const guessed = inferInvestment(name, symbol, notes)
+    let cat = category
+    if (kind === 'other' && looksLikeInvestment(name, symbol, notes) && guessed.category === 'stocks') {
+      cat = 'stocks'
     }
-    if (category === 'crypto' && !symbol.trim()) {
-      setError('Pon el ticker (BTC, ETH…)')
-      return
-    }
+    if (kind === 'other' && guessed.category === 'crypto') cat = 'crypto'
+    if (kind === 'other' && guessed.category === 'pension') cat = 'pension'
 
     const rate = interestRate ? Number(interestRate.replace(',', '.')) : undefined
     let metadata: Asset['metadata']
-    if (category === 'cash') {
+    if (cat === 'cash') {
       const prev = editAsset?.metadata as CashMetadata | undefined
       metadata = {
         ...prev,
@@ -176,41 +176,43 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         interestRate: rate,
         parkedReason: cashJob === 'parked' ? parkedReason.trim() || undefined : undefined,
       }
-    } else if (category === 'debt') {
+    } else if (cat === 'debt') {
       metadata = {
         debtType,
         monthlyPayment: monthlyPayment ? parseEur(monthlyPayment) : undefined,
         interestRate: rate,
       }
-    } else if (category === 'stocks') {
+    } else if (cat === 'stocks') {
       const qty = quantity ? Number(quantity.replace(',', '.')) : undefined
-      const idRaw = symbol.trim().toUpperCase()
-      const asIsin = isISIN(idRaw)
+      const idRaw = (symbol.trim() || guessed.isin || guessed.ticker || '').toUpperCase()
+      const asIsin = Boolean(idRaw) && isISIN(idRaw)
       const prev = editAsset?.metadata as StocksMetadata | undefined
+      const userPickedKind = stockKind !== 'etf' || Boolean(editAsset)
       metadata = {
         ...prev,
-        assetType: stockKind,
-        identifierType: asIsin ? 'isin' : 'ticker',
-        isin: asIsin ? idRaw : prev?.isin,
+        assetType: userPickedKind ? stockKind : guessed.assetType || stockKind,
+        identifierType: asIsin ? 'isin' : idRaw ? 'ticker' : undefined,
+        isin: asIsin ? idRaw : guessed.isin || prev?.isin,
         quantity: qty,
         pricePerUnit: qty && qty > 0 ? v / qty : undefined,
-        canAutoUpdate: Boolean(idRaw) && stockKind !== 'fondo_activo',
-        region,
-        assetClass,
-        broker: broker.trim() || undefined,
+        canAutoUpdate: Boolean(idRaw || guessed.ticker) && (userPickedKind ? stockKind : guessed.assetType) !== 'fondo_activo',
+        region: region !== 'world' || Boolean(editAsset) ? region : guessed.region || region,
+        assetClass: assetClass !== 'equity' || Boolean(editAsset) ? assetClass : guessed.assetClass || assetClass,
+        broker: broker.trim() || guessed.broker,
       }
-    } else if (category === 'crypto') {
+    } else if (cat === 'crypto') {
       const qty = quantity ? Number(quantity.replace(',', '.')) : undefined
       metadata = { quantity: qty, pricePerUnit: qty && qty > 0 ? v / qty : undefined }
-    } else if (category === 'pension') {
-      metadata = { manager: broker.trim() || undefined }
+    } else if (cat === 'pension') {
+      metadata = { manager: broker.trim() || guessed.broker || undefined }
     }
 
+    const symbolOut = (symbol.trim() || guessed.isin || guessed.ticker || '').trim()
     onSave({
-      category,
+      category: cat,
       name: name.trim(),
       value: v,
-      symbol: symbol.trim() ? (category === 'stocks' ? symbol.trim().toUpperCase() : symbol.trim()) : undefined,
+      symbol: symbolOut ? (cat === 'stocks' ? symbolOut.toUpperCase() : symbolOut) : undefined,
       notes: notes.trim() || undefined,
       metadata,
       source: editAsset?.source ?? 'manual',
@@ -356,7 +358,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
                   className={inputClass}
                 />
                 <p className="text-label-sm text-on-surface/45 font-body mt-1.5">
-                  Así se identifica el mismo fondo en la cartera. Sin esto acaba en Otros y una IA no sabe qué es.
+                  Opcional. Si el nombre ya dice qué es (Inbestme, VWCE, Numantia…), lo reconocemos.
                 </p>
               </div>
               <div>

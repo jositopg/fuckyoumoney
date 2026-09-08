@@ -340,6 +340,20 @@ describe('supabaseMapper DB → local', () => {
     expect(asset.value).toBe(12000)
   })
 
+  it('classifies a fund by name even without ticker', () => {
+    const row = localAssetToDbInsert(
+      baseAsset({
+        category: 'other',
+        name: 'ETFs ProyectoK 8/10 Inbestme',
+        value: 20100,
+      }),
+      USER,
+      '44444444-4444-4444-8444-444444444446'
+    )
+    expect(row?.type).toBe('etf')
+    expect(row?.institution).toBe('Inbestme')
+  })
+
   it('unpacks cash job and TAE from packed notes', () => {
     const row: AssetRow = {
       id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaac',

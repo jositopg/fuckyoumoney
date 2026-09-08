@@ -11,6 +11,7 @@ import type {
   VehicleMetadata,
 } from '../types'
 import { packNotes, unpackNotes } from './fymMeta'
+import { inferInvestment, looksLikeInvestment } from '../utils/inferInvestment'
 import type {
   AssetInsert,
   AssetRow,
@@ -102,6 +103,32 @@ export function localAssetToDbInsert(
   idOverride?: string
 ): AssetInsert | null {
   if (asset.category === 'debt') return null
+
+  if (
+    asset.category === 'other' &&
+    looksLikeInvestment(asset.name, asset.symbol, asset.notes)
+  ) {
+    const guessed = inferInvestment(asset.name, asset.symbol, asset.notes)
+    if (guessed.category === 'stocks') {
+      return localAssetToDbInsert(
+        {
+          ...asset,
+          category: 'stocks',
+          symbol: asset.symbol || guessed.ticker || guessed.isin,
+          metadata: {
+            assetType: guessed.assetType,
+            region: guessed.region,
+            assetClass: guessed.assetClass,
+            broker: guessed.broker,
+            isin: guessed.isin,
+            ...(asset.metadata as object),
+          },
+        },
+        userId,
+        idOverride
+      )
+    }
+  }
 
   const id = idOverride ?? (isUuid(asset.id) ? asset.id : crypto.randomUUID())
   const base = {
@@ -356,6 +383,7 @@ export function dbAssetToLocal(row: AssetRow): Asset {
     case 'etf':
     case 'bond': {
       const { human, extra } = unpackNotes(row.notes)
+      const guessed = inferInvestment(row.name, row.ticker ?? undefined, human)
       const kinds = ['accion', 'etf', 'fondo_indexado', 'fondo_activo', 'otro'] as const
       const regions = ['world', 'us', 'europe', 'em', 'spain', 'asia', 'mixed'] as const
       const classes = ['equity', 'bonds', 'mixed', 'money_market', 'commodity', 'real_estate'] as const
@@ -364,26 +392,31 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         category: 'stocks',
         name: row.name,
         value,
-        symbol: (typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : null) || row.ticker || undefined,
+        symbol:
+          (typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : null) ||
+          row.ticker ||
+          guessed.ticker ||
+          guessed.isin ||
+          undefined,
         notes: human,
         metadata: {
           assetType: kinds.includes(extra.assetType as (typeof kinds)[number])
             ? (extra.assetType as StocksMetadata['assetType'])
-            : reverseStockType(row.type),
+            : guessed.assetType || reverseStockType(row.type),
           identifierType: extra.identifierType === 'isin' ? 'isin' : extra.identifierType === 'ticker' ? 'ticker' : undefined,
           quantity: row.quantity,
           purchasePrice: row.purchase_price ?? undefined,
           pricePerUnit: row.quantity > 0 && value > 0 ? value / row.quantity : undefined,
-          canAutoUpdate: extra.canAutoUpdate === false ? false : Boolean(row.ticker),
+          canAutoUpdate: extra.canAutoUpdate === false ? false : Boolean(row.ticker || guessed.ticker),
           resolvedTicker: typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : row.ticker ?? undefined,
-          isin: typeof extra.isin === 'string' ? extra.isin : undefined,
+          isin: typeof extra.isin === 'string' ? extra.isin : guessed.isin,
           region: regions.includes(extra.region as (typeof regions)[number])
             ? (extra.region as StocksMetadata['region'])
-            : undefined,
+            : guessed.region,
           assetClass: classes.includes(extra.assetClass as (typeof classes)[number])
             ? (extra.assetClass as StocksMetadata['assetClass'])
-            : undefined,
-          broker: (typeof extra.broker === 'string' ? extra.broker : row.institution) || undefined,
+            : guessed.assetClass,
+          broker: (typeof extra.broker === 'string' ? extra.broker : row.institution) || guessed.broker,
         } satisfies StocksMetadata,
         createdAt: created,
         updatedAt: now,
@@ -499,9 +532,21 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         .replace(/año:\d+/g, '')
         .trim()
       if (!isVehicle) {
-        // Inversiones guardadas como type=other (bug viejo: sin assetType → other).
-        if (row.ticker || row.notes?.startsWith('FYM1:')) {
-          return dbAssetToLocal({ ...row, type: 'etf' })
+        // Inversiones grabadas como other: ticker, extra, o el nombre del fondo.
+        if (
+          row.ticker ||
+          row.notes?.startsWith('FYM1:') ||
+          looksLikeInvestment(row.name, row.ticker ?? undefined, row.notes ?? undefined)
+        ) {
+          const guessed = inferInvestment(row.name, row.ticker ?? undefined, row.notes ?? undefined)
+          if (guessed.category === 'pension') {
+            return dbAssetToLocal({ ...row, type: 'pension' })
+          }
+          if (guessed.category === 'crypto') {
+            return dbAssetToLocal({ ...row, type: 'crypto' })
+          }
+          const asType = guessed.assetType === 'accion' ? 'stock' : 'etf'
+          return dbAssetToLocal({ ...row, type: asType })
         }
         return {
           id: row.id,

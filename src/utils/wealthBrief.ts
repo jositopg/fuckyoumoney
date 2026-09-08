@@ -119,7 +119,7 @@ export function buildWealthBrief(
     'Cifras en EUR. No inventes números que no estén en este JSON.',
     'Lee diagnosis.verdict y diagnosis.headline antes de opinar. Las acciones ya están ordenadas.',
     'Efectivo: emergency = colchón (puede tener TAE). parked = apartado con motivo (reforma, juicio, impuestos…). Todo lo demás (idle/working legacy) = a fondos. TAE de cuenta NO es invertirlo.',
-    'Inversiones (class=etf|stock): extra.assetType, extra.region, extra.assetClass, extra.isin, ticker. type=other con ticker es un fondo mal clasificado: trátalo como etf.',
+    'Inversiones: si el nombre es un fondo (Inbestme, Numantia, VWCE, ETF, Indexa…) trátalo como etf aunque type=other o falte ticker. No hace falta que el usuario deje ISIN perfecto.',
     'Diversificación de cartera financiera: mira region (world/us/europe/em/spain/asia) y assetClass (equity/bonds/mixed/money_market). No confundas ladrillo con esta manga.',
     'Lee diagnosis.moves y diagnosis.mix. mix.stance: ok | rebalance_with_cash | divest_brick | unknown.',
     'Ladrillo alto NO implica vender. Si el efectivo aguanta un parón de alquiler (≥6–12 meses), equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.',
