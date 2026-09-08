@@ -17,6 +17,52 @@ function loadFincaDatabaseUrl() {
   return null
 }
 
+/** db.PROJECT.supabase.co is IPv6-only; Vercel cannot resolve it. */
+function fincaUrlsToTry(raw) {
+  const direct = raw.trim()
+  const urls = [direct]
+  try {
+    const u = new URL(direct)
+    const m = /^db\.([a-z0-9]+)\.supabase\.co$/i.exec(u.hostname)
+    if (m) {
+      const ref = m[1]
+      const pass = encodeURIComponent(decodeURIComponent(u.password || ''))
+      const user = `postgres.${ref}`
+      for (const host of [
+        'aws-0-eu-west-1.pooler.supabase.com',
+        'aws-0-eu-central-1.pooler.supabase.com',
+        'aws-0-eu-west-3.pooler.supabase.com',
+      ]) {
+        urls.push(`postgresql://${user}:${pass}@${host}:5432/postgres`)
+      }
+    }
+  } catch {
+    // keep direct only
+  }
+  return [...new Set(urls)]
+}
+
+async function fetchFincaSnapshot(connectionString) {
+  const lastErrors = []
+  for (const url of fincaUrlsToTry(connectionString)) {
+    const client = new pg.Client({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 8000,
+    })
+    try {
+      await client.connect()
+      const result = await client.query('SELECT public.patrimonio_macro_snapshot() AS snap')
+      await client.end().catch(() => {})
+      return result.rows[0]?.snap
+    } catch (err) {
+      lastErrors.push(err instanceof Error ? err.message : String(err))
+      await client.end().catch(() => {})
+    }
+  }
+  throw new Error(lastErrors[lastErrors.length - 1] || 'no se pudo conectar a Finca')
+}
+
 function env(name) {
   const v = process.env[name]
   return v ? v.replace(/^['"]|['"]$/g, '') : ''
@@ -69,16 +115,11 @@ export default async function handler(req, res) {
     })
   }
 
-  const client = new pg.Client({ connectionString: fincaUrl, ssl: { rejectUnauthorized: false } })
   let snapshot
   try {
-    await client.connect()
-    const result = await client.query('SELECT public.patrimonio_macro_snapshot() AS snap')
-    snapshot = result.rows[0]?.snap
+    snapshot = await fetchFincaSnapshot(fincaUrl)
   } catch (err) {
     return res.status(502).json({ error: `Finca DB: ${err instanceof Error ? err.message : 'error'}` })
-  } finally {
-    await client.end().catch(() => {})
   }
 
   if (!snapshot || !Array.isArray(snapshot.properties)) {
