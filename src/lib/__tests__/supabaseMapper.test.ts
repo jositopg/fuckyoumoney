@@ -12,6 +12,7 @@ import {
   reverseDebtType,
 } from '../supabaseMapper'
 import {
+  formatCloudError,
   hasMigrationFlag,
   MIGRATION_FLAG_KEY,
   setMigrationFlag,
@@ -514,5 +515,16 @@ describe('migration flag idempotency', () => {
     expect(localStorage.getItem(MIGRATION_FLAG_KEY)).toBe('1')
     setMigrationFlag()
     expect(hasMigrationFlag()).toBe(true)
+  })
+})
+
+describe('formatCloudError', () => {
+  it('joins supabase message and details', () => {
+    expect(
+      formatCloudError({
+        message: 'new row violates check constraint "assets_type_check"',
+        details: 'Failing row contains (vehicle)',
+      })
+    ).toContain('assets_type_check')
   })
 })

@@ -23,6 +23,7 @@ import { exportData } from './utils/dataPortability'
 import {
   createCloudAsset,
   deleteCloudAsset,
+  formatCloudError,
   getProfileSettings,
   mergeCloudAndLocal,
   migrateLocalToSupabaseIfNeeded,
@@ -257,7 +258,7 @@ export default function App() {
           }))
           setSyncError(null)
         } catch (err) {
-          setSyncError(err instanceof Error ? err.message : 'Error al guardar en la nube')
+          setSyncError(formatCloudError(err))
           setData(prev => ({
             ...prev,
             assets: prev.assets.map(a => (a.id === editAsset.id ? updated : a)),
@@ -287,7 +288,7 @@ export default function App() {
         setData(prev => ({ ...prev, assets: [...prev.assets, saved] }))
         setSyncError(null)
       } catch (err) {
-        setSyncError(err instanceof Error ? err.message : 'Error al crear en la nube')
+        setSyncError(formatCloudError(err))
         setData(prev => ({ ...prev, assets: [...prev.assets, newAsset] }))
       }
     } else {
@@ -311,7 +312,7 @@ export default function App() {
         await deleteCloudAsset(target, auth.user!.id)
         setSyncError(null)
       } catch (err) {
-        setSyncError(err instanceof Error ? err.message : 'Error al borrar en la nube')
+        setSyncError(formatCloudError(err))
       }
     }
 

@@ -170,86 +170,49 @@ export async function migrateLocalToSupabaseIfNeeded(
   return { migrated: true, omittedRealEstate, cloudAssets }
 }
 
-export async function createCloudAsset(asset: Asset, userId: string): Promise<Asset> {
-  if (!supabase) throw new Error('Supabase no configurado')
-
-  if (asset.readOnly || asset.source === 'finca') {
-    return asset
+export function formatCloudError(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as { message?: string; details?: string; hint?: string }
+    const parts = [e.message, e.details, e.hint].filter(p => typeof p === 'string' && p.trim())
+    if (parts.length) return parts.join(' — ')
   }
+  if (err instanceof Error && err.message) return err.message
+  return 'Error al guardar en la nube'
+}
 
-  if (asset.category === 'debt') {
-    const row = localDebtToLiabilityInsert(asset, userId)
+/** Insert or update. Invalid local ids are replaced with a uuid. */
+export async function saveCloudAsset(asset: Asset, userId: string): Promise<Asset> {
+  if (!supabase) throw new Error('Supabase no configurado')
+  if (asset.readOnly || asset.source === 'finca') return asset
+
+  const id = isUuid(asset.id) ? asset.id : crypto.randomUUID()
+  const toSave = { ...asset, id }
+
+  if (toSave.category === 'debt') {
+    const row = localDebtToLiabilityInsert(toSave, userId, id)
     if (!row) throw new Error('No se pudo mapear la deuda')
-    const { data, error } = await supabase.from('liabilities').insert(row).select().single()
-    if (error) throw error
+    const { data, error } = await supabase
+      .from('liabilities')
+      .upsert(row, { onConflict: 'id' })
+      .select()
+      .single()
+    if (error) throw new Error(formatCloudError(error))
     return dbLiabilityToLocal(data)
   }
 
-  const row = localAssetToDbInsert(asset, userId)
+  const row = localAssetToDbInsert(toSave, userId, id)
   if (!row) throw new Error('Categoría no sincronizable')
-  const { data, error } = await supabase.from('assets').insert(row).select().single()
-  if (error) throw error
+  const { data, error } = await supabase.from('assets').upsert(row, { onConflict: 'id' }).select().single()
+  if (error) throw new Error(formatCloudError(error))
   return dbAssetToLocal(data)
 }
 
+export async function createCloudAsset(asset: Asset, userId: string): Promise<Asset> {
+  return saveCloudAsset(asset, userId)
+}
+
 export async function updateCloudAsset(asset: Asset, userId: string): Promise<Asset> {
-  if (!supabase) throw new Error('Supabase no configurado')
-
-  if (asset.readOnly || asset.source === 'finca') {
-    return asset
-  }
-
-  if (asset.category === 'debt') {
-    const row = localDebtToLiabilityInsert(asset, userId)
-    if (!row) throw new Error('No se pudo mapear la deuda')
-    const update = {
-      name: row.name,
-      type: row.type,
-      balance: row.balance,
-      interest_rate: row.interest_rate,
-      monthly_payment: row.monthly_payment,
-      end_date: row.end_date,
-      currency: row.currency,
-      notes: row.notes,
-      is_current: row.is_current,
-      updated_at: new Date().toISOString(),
-    }
-    const { data, error } = await supabase
-      .from('liabilities')
-      .update(update)
-      .eq('id', asset.id)
-      .eq('user_id', userId)
-      .select()
-      .single()
-    if (error) throw error
-    return dbLiabilityToLocal(data)
-  }
-
-  const row = localAssetToDbInsert(asset, userId, asset.id)
-  if (!row) throw new Error('Categoría no sincronizable')
-  const update = {
-    name: row.name,
-    type: row.type,
-    ticker: row.ticker,
-    ticker_source: row.ticker_source,
-    quantity: row.quantity,
-    purchase_price: row.purchase_price,
-    manual_value: row.manual_value,
-    currency: row.currency,
-    institution: row.institution ?? null,
-    notes: row.notes,
-    is_liquid: row.is_liquid,
-    updated_at: new Date().toISOString(),
-  }
-  const { data, error } = await supabase
-    .from('assets')
-    .update(update)
-    .eq('id', asset.id)
-    .eq('user_id', userId)
-    .select()
-    .single()
-  if (error) throw error
-  return dbAssetToLocal(data)
+  return saveCloudAsset(asset, userId)
 }
 
 export async function deleteCloudAsset(
@@ -338,20 +301,7 @@ export async function pushLocalAssetsToCloud(
       continue
     }
     try {
-      if (isUuid(asset.id)) {
-        try {
-          out.push(await updateCloudAsset(asset, userId))
-          continue
-        } catch {
-          out.push(await createCloudAsset(asset, userId))
-          continue
-        }
-      }
-      const created = await createCloudAsset(
-        { ...asset, id: crypto.randomUUID() },
-        userId
-      )
-      out.push(created)
+      out.push(await saveCloudAsset(asset, userId))
     } catch {
       out.push(asset)
     }
