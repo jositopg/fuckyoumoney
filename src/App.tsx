@@ -24,8 +24,9 @@ import {
   createCloudAsset,
   deleteCloudAsset,
   getProfileSettings,
-  mergeCloudWithLocalRealEstate,
+  mergeCloudAndLocal,
   migrateLocalToSupabaseIfNeeded,
+  pushLocalAssetsToCloud,
   saveProfileSettings,
   updateCloudAsset,
 } from './lib/supabaseData'
@@ -47,8 +48,8 @@ const DEFAULT_DATA: AppData = {
   schema_version: 4,
 }
 
-function newAssetId(loggedIn: boolean): string {
-  if (loggedIn && typeof crypto !== 'undefined' && crypto.randomUUID) {
+function newAssetId(hasUser: boolean): string {
+  if (hasUser && typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
   return generateId()
@@ -97,19 +98,32 @@ export default function App() {
         } catch {
           cloudSettings = { monthlyExpenses: null, emergencyTargetMonths: null }
         }
-        setData(prev => ({
-          ...prev,
-          assets: mergeCloudWithLocalRealEstate(
-            cloudAssets,
-            omittedRealEstate.length > 0 ? omittedRealEstate : prev.assets
-          ),
-          ...(cloudSettings.monthlyExpenses != null
-            ? { monthlyExpenses: cloudSettings.monthlyExpenses }
-            : {}),
-          ...(cloudSettings.emergencyTargetMonths != null
-            ? { emergencyTargetMonths: cloudSettings.emergencyTargetMonths }
-            : {}),
-        }))
+        const localForMerge =
+          omittedRealEstate.length > 0 ? omittedRealEstate : data.assets
+        const { merged, toUpsert } = mergeCloudAndLocal(cloudAssets, localForMerge)
+        let assets = merged
+        if (toUpsert.length > 0) {
+          const pushed = await pushLocalAssetsToCloud(toUpsert, auth.user!.id)
+          const pushedByOldId = new Map(toUpsert.map((a, i) => [a.id, pushed[i]]))
+          assets = merged.map(a => {
+            const next = pushedByOldId.get(a.id)
+            return next ?? a
+          })
+        }
+        if (cancelled) return
+        setData(prev => {
+          const again = mergeCloudAndLocal(assets, prev.assets)
+          return {
+            ...prev,
+            assets: again.merged,
+            ...(cloudSettings.monthlyExpenses != null
+              ? { monthlyExpenses: cloudSettings.monthlyExpenses }
+              : {}),
+            ...(cloudSettings.emergencyTargetMonths != null
+              ? { emergencyTargetMonths: cloudSettings.emergencyTargetMonths }
+              : {}),
+          }
+        })
         setCloudReady(true)
         setSyncError(null)
       } catch (err) {
@@ -220,7 +234,7 @@ export default function App() {
   })
 
   async function handleSaveAsset(assetData: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>) {
-    const loggedIn = Boolean(auth.user && cloudReady)
+    const loggedIn = Boolean(auth.user)
 
     if (editAsset) {
       const updated: Asset = {
@@ -285,7 +299,7 @@ export default function App() {
   async function handleDeleteAsset() {
     if (!editAsset) return
     const target = editAsset
-    const loggedIn = Boolean(auth.user && cloudReady)
+    const loggedIn = Boolean(auth.user)
 
     if (target.readOnly || target.source === 'finca') {
       setEditAsset(null)
@@ -317,7 +331,7 @@ export default function App() {
       monthlyExpenses: settings.monthlyExpenses,
       emergencyTargetMonths: settings.emergencyTargetMonths,
     }))
-    if (auth.user && cloudReady) {
+    if (auth.user) {
       try {
         await saveProfileSettings(auth.user.id, settings)
       } catch {

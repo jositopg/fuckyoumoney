@@ -6,6 +6,7 @@ import {
   localAssetToDbInsert,
   localDebtToLiabilityInsert,
   mapDebtType,
+  mergeCloudAndLocal,
   mergeCloudWithLocalRealEstate,
   prepareMigrationPayload,
   reverseDebtType,
@@ -106,7 +107,7 @@ describe('supabaseMapper local → DB', () => {
       ticker_source: 'yahoo',
       quantity: 10,
       purchase_price: 100,
-      manual_value: null,
+      manual_value: 1000,
     })
   })
 
@@ -434,6 +435,47 @@ describe('prepareMigrationPayload', () => {
     expect(merged).toHaveLength(2)
     expect(merged.find(a => a.category === 'real_estate')?.name).toBe('Piso')
     expect(merged.find(a => a.category === 'cash')?.value).toBe(1)
+  })
+
+  it('keeps unsynced local investments when Finca is already in the cloud', () => {
+    const cloud = [
+      baseAsset({
+        id: '11111111-1111-4111-8111-111111111111',
+        category: 'cash',
+        name: 'Vieja',
+        value: 100,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      baseAsset({
+        id: 'finca-1',
+        category: 'real_estate',
+        name: 'Piso Finca',
+        value: 100,
+        source: 'finca',
+        readOnly: true,
+      }),
+    ]
+    const local = [
+      baseAsset({
+        id: '11111111-1111-4111-8111-111111111111',
+        category: 'cash',
+        name: 'Vieja editada',
+        value: 250,
+        updatedAt: '2026-09-08T12:00:00.000Z',
+      }),
+      baseAsset({
+        id: 'new-fund',
+        category: 'stocks',
+        name: 'VWCE',
+        value: 8000,
+        updatedAt: '2026-09-08T12:00:00.000Z',
+      }),
+    ]
+    const { merged, toUpsert } = mergeCloudAndLocal(cloud, local)
+    expect(merged.find(a => a.category === 'stocks')?.value).toBe(8000)
+    expect(merged.find(a => a.id === cloud[0].id)?.value).toBe(250)
+    expect(merged.find(a => a.source === 'finca')?.name).toBe('Piso Finca')
+    expect(toUpsert.map(a => a.name).sort()).toEqual(['VWCE', 'Vieja editada'])
   })
 
   it('drops local real_estate once Finca is in the cloud', () => {

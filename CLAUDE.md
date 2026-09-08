@@ -64,6 +64,7 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - No hay tracker en tiempo real. Fondos = valor al abrir. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
 - Mezcla (`diagnosis.mix`): ladrillo alto no implica vender. Si el efectivo aguanta un parón de alquiler, equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.
 - Inmuebles Finca no se editan ni se borran desde el formulario; se regeneran en el sync.
+- Al cargar, nube y local se fusionan (`updatedAt`); lo local más nuevo o solo-local se sube. Un deploy no puede borrar inversiones.
 - Tras cada commit: `git push`. Merge a `main` solo con build+test verdes.
 
 ## Limitaciones

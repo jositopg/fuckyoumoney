@@ -142,7 +142,6 @@ export function localAssetToDbInsert(
     case 'stocks': {
       const meta = asset.metadata as StocksMetadata | undefined
       const ticker = asset.symbol || meta?.resolvedTicker || null
-      const hasLiveTicker = Boolean(ticker) && meta?.canAutoUpdate !== false
       const quantity = meta?.quantity && meta.quantity > 0 ? meta.quantity : 1
       return {
         ...base,
@@ -151,7 +150,8 @@ export function localAssetToDbInsert(
         ticker_source: ticker ? 'yahoo' : null,
         quantity,
         purchase_price: meta?.purchasePrice ?? null,
-        manual_value: hasLiveTicker ? null : asset.value,
+        // Last known EUR snapshot. Live tickers still refresh on open; never revert to purchase cost.
+        manual_value: asset.value,
         is_liquid: true,
       }
     }
@@ -166,7 +166,7 @@ export function localAssetToDbInsert(
         ticker_source: ticker ? 'coingecko' : null,
         quantity,
         purchase_price: meta?.purchasePrice ?? null,
-        manual_value: ticker ? null : asset.value,
+        manual_value: asset.value,
         is_liquid: true,
         institution: meta?.wallet ?? null,
       }
@@ -563,19 +563,57 @@ export function prepareMigrationPayload(
   return { assetInserts, liabilityInserts, idMap, omittedRealEstate }
 }
 
+function isFincaAsset(asset: Asset): boolean {
+  return asset.source === 'finca' || Boolean(asset.readOnly)
+}
+
+function stamp(asset: Asset): number {
+  return Date.parse(asset.updatedAt || asset.createdAt || '') || 0
+}
+
 /**
- * Merge cloud rows with leftover local real_estate that is NOT from Finca
- * and not already present in the cloud set.
+ * Merge cloud + local without dropping unsynced edits.
+ * Finca rows always come from cloud. Other local-only or newer local rows win
+ * and are returned in `toUpsert` so they can be pushed up.
  */
+export function mergeCloudAndLocal(
+  cloudAssets: Asset[],
+  localAssets: Asset[]
+): { merged: Asset[]; toUpsert: Asset[] } {
+  const merged = new Map<string, Asset>()
+  const toUpsert: Asset[] = []
+
+  for (const row of cloudAssets) merged.set(row.id, row)
+
+  const hasFincaCloud = cloudAssets.some(isFincaAsset)
+  const fincaNames = new Set(cloudAssets.filter(isFincaAsset).map(a => a.name))
+
+  for (const local of localAssets) {
+    if (isFincaAsset(local)) continue
+    // Inmuebles los trae Finca. No reinyectar pisos locales sueltos.
+    if (local.category === 'real_estate' && hasFincaCloud && !merged.has(local.id)) continue
+    if (local.category === 'real_estate' && fincaNames.has(local.name)) continue
+
+    const cloud = merged.get(local.id)
+    if (!cloud) {
+      merged.set(local.id, local)
+      toUpsert.push(local)
+      continue
+    }
+    if (isFincaAsset(cloud)) continue
+    if (stamp(local) > stamp(cloud)) {
+      merged.set(local.id, local)
+      toUpsert.push(local)
+    }
+  }
+
+  return { merged: [...merged.values()], toUpsert }
+}
+
+/** @deprecated use mergeCloudAndLocal */
 export function mergeCloudWithLocalRealEstate(
   cloudAssets: Asset[],
   localAssets: Asset[]
 ): Asset[] {
-  const hasFincaCloud = cloudAssets.some(a => a.source === 'finca' || a.readOnly)
-  if (hasFincaCloud) return cloudAssets
-  const cloudIds = new Set(cloudAssets.map(a => a.id))
-  const localOnly = localAssets.filter(
-    a => a.category === 'real_estate' && !cloudIds.has(a.id)
-  )
-  return [...cloudAssets, ...localOnly]
+  return mergeCloudAndLocal(cloudAssets, localAssets).merged
 }

@@ -3,8 +3,10 @@ import { supabase } from './supabase'
 import {
   dbAssetToLocal,
   dbLiabilityToLocal,
+  isUuid,
   localAssetToDbInsert,
   localDebtToLiabilityInsert,
+  mergeCloudAndLocal,
   mergeCloudWithLocalRealEstate,
   prepareMigrationPayload,
 } from './supabaseMapper'
@@ -322,4 +324,39 @@ export async function saveProfileSettings(
   if (error) throw error
 }
 
-export { mergeCloudWithLocalRealEstate }
+/**
+ * Push local-only or newer local rows to the cloud. Non-UUID ids get a new uuid on insert.
+ */
+export async function pushLocalAssetsToCloud(
+  assets: Asset[],
+  userId: string
+): Promise<Asset[]> {
+  const out: Asset[] = []
+  for (const asset of assets) {
+    if (asset.readOnly || asset.source === 'finca') {
+      out.push(asset)
+      continue
+    }
+    try {
+      if (isUuid(asset.id)) {
+        try {
+          out.push(await updateCloudAsset(asset, userId))
+          continue
+        } catch {
+          out.push(await createCloudAsset(asset, userId))
+          continue
+        }
+      }
+      const created = await createCloudAsset(
+        { ...asset, id: crypto.randomUUID() },
+        userId
+      )
+      out.push(created)
+    } catch {
+      out.push(asset)
+    }
+  }
+  return out
+}
+
+export { mergeCloudAndLocal, mergeCloudWithLocalRealEstate }
