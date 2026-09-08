@@ -1,20 +1,95 @@
--- Fuck You Money — schema para humanos y para cualquier IA con acceso a este Postgres.
+-- Fuck You Money — schema para humanos y para cualquier IA.
 -- Proyecto: jwcrrnevvtxaycsqjmem
--- Aplicar: node scripts/run-sql.mjs supabase/migrations/001_wealth_os.sql
+-- Pegar ENTERO en SQL Editor y Run. Se puede ejecutar más de una vez.
 --
 -- Orden de lectura para una IA:
 --   1. SELECT * FROM ai_guide ORDER BY sort;
 --   2. SELECT patrimonio_ia();
 --   3. SELECT * FROM v_net_worth;
 --   4. SELECT * FROM v_positions;
--- No inventar cifras. Todo está en EUR. Inmuebles Finca = solo lectura.
 
-BEGIN;
-
+-- Tipos (si ya existen, no pasa nada)
 DO $$ BEGIN
-  ALTER TYPE public.asset_type ADD VALUE IF NOT EXISTS 'vehicle';
+  CREATE TYPE public.display_currency AS ENUM ('EUR', 'USD', 'GBP');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.asset_type AS ENUM (
+    'stock', 'etf', 'crypto', 'commodity', 'real_estate',
+    'cash', 'bond', 'pension', 'other', 'vehicle'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.ticker_source AS ENUM ('yahoo', 'coingecko');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.liability_type AS ENUM (
+    'mortgage', 'personal_loan', 'car_loan', 'credit_card', 'student_loan', 'other'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Tablas base (si el proyecto estaba vacío)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email text,
+  name text,
+  display_currency public.display_currency NOT NULL DEFAULT 'EUR',
+  monthly_expenses numeric
+);
+
+CREATE TABLE IF NOT EXISTS public.assets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  type public.asset_type NOT NULL,
+  ticker text,
+  ticker_source public.ticker_source,
+  quantity numeric NOT NULL DEFAULT 1,
+  purchase_price numeric,
+  purchase_date date,
+  manual_value numeric,
+  currency text NOT NULL DEFAULT 'EUR',
+  institution text,
+  country text,
+  notes text,
+  is_liquid boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.liabilities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  type public.liability_type NOT NULL,
+  balance numeric NOT NULL DEFAULT 0,
+  original_amount numeric,
+  interest_rate numeric,
+  monthly_payment numeric,
+  start_date date,
+  end_date date,
+  currency text NOT NULL DEFAULT 'EUR',
+  institution text,
+  notes text,
+  is_current boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.price_cache (
+  symbol text PRIMARY KEY,
+  price numeric NOT NULL,
+  currency text NOT NULL DEFAULT 'EUR',
+  change_pct numeric,
+  source text,
+  last_updated timestamptz NOT NULL DEFAULT now()
+);
 
 ALTER TABLE public.assets
   ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual',
@@ -29,6 +104,9 @@ ALTER TABLE public.liabilities
 CREATE UNIQUE INDEX IF NOT EXISTS assets_user_source_external_uid
   ON public.assets (user_id, source, external_id)
   WHERE external_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS assets_user_id_idx ON public.assets (user_id);
+CREATE INDEX IF NOT EXISTS liabilities_user_id_idx ON public.liabilities (user_id);
 
 CREATE TABLE IF NOT EXISTS public.wealth_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,14 +134,39 @@ CREATE TABLE IF NOT EXISTS public.external_snapshots (
 CREATE INDEX IF NOT EXISTS external_snapshots_user_source_idx
   ON public.external_snapshots (user_id, source, as_of DESC);
 
--- Guía en la propia base: visible incluso con la anon key (no hay cifras).
 CREATE TABLE IF NOT EXISTS public.ai_guide (
   sort int PRIMARY KEY,
   topic text NOT NULL,
   content text NOT NULL
 );
 
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.liabilities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wealth_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.external_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_guide ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS profiles_own ON public.profiles;
+CREATE POLICY profiles_own ON public.profiles
+  FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS assets_own ON public.assets;
+CREATE POLICY assets_own ON public.assets
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS liabilities_own ON public.liabilities;
+CREATE POLICY liabilities_own ON public.liabilities
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS wealth_snapshots_own ON public.wealth_snapshots;
+CREATE POLICY wealth_snapshots_own ON public.wealth_snapshots
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS external_snapshots_own ON public.external_snapshots;
+CREATE POLICY external_snapshots_own ON public.external_snapshots
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS ai_guide_read ON public.ai_guide;
 CREATE POLICY ai_guide_read ON public.ai_guide FOR SELECT USING (true);
 
@@ -72,33 +175,32 @@ INSERT INTO public.ai_guide (sort, topic, content) VALUES
  $g$Eres una IA con acceso al Postgres de Fuck You Money, el balance consolidado del patrimonio de Jose (EUR).
 
 Pasos:
-1. SELECT patrimonio_ia();          -- briefing JSON (cifras). Requiere estar autenticado como Jose o ser postgres/service_role.
-2. SELECT * FROM v_net_worth;       -- totales.
-3. SELECT * FROM v_positions;       -- cada activo y pasivo.
-4. SELECT * FROM v_allocation;      -- peso por clase.
+1. SELECT patrimonio_ia();
+2. SELECT * FROM v_net_worth;
+3. SELECT * FROM v_positions;
+4. SELECT * FROM v_allocation;
 
 Reglas:
 - No inventes números. Si falta un campo, dilo.
-- Inmuebles con source=finca o institution=finca son SOLO LECTURA. La gestión (inquilinos, facturas, fiscal) es la app Finca, otro proyecto.
-- Finca NO guarda el principal de hipoteca. Las hipotecas están en liabilities (type=mortgage).
-- Autonomía financiera = (liquid_assets - total_liabilities) / profiles.monthly_expenses. El ladrillo NO entra en autonomía.
-- Líquido = cash + stock + etf + crypto (is_liquid = true).
-- App de UI: https://fuckyoumoney.vercel.app  Finca: https://lasfincas.vercel.app
+- Inmuebles con source=finca o institution=finca son SOLO LECTURA. La gestión es la app Finca.
+- Finca NO guarda el principal de hipoteca. Hipotecas = liabilities type=mortgage.
+- Autonomía = (liquid_assets - total_liabilities) / profiles.monthly_expenses. El ladrillo NO entra.
+- Líquido = filas con is_liquid = true (cash, stock, etf, crypto).
+- App: https://fuckyoumoney.vercel.app  Finca: https://lasfincas.vercel.app
 $g$),
 (2, 'tables',
  $g$profiles — un row por usuario. monthly_expenses = gasto mensual de vida.
-assets — activos. type: cash, stock, etf, crypto, commodity, real_estate, pension, bond, other/vehicle.
+assets — activos. type: cash, stock, etf, crypto, commodity, real_estate, pension, bond, other, vehicle.
   Valor = manual_value si > 0; si no, quantity * purchase_price.
   institution=finca → inmueble ingerido desde Finca (read_only).
-  notes puede empezar por FYM1:{json} con renta, municipio, etc. Preferir columna metadata.
 liabilities — pasivos. type: mortgage, personal_loan, car_loan, credit_card, student_loan, other. balance = principal vivo.
-wealth_snapshots — fotos diarias/mensuales para series.
-external_snapshots — payload crudo del último sync Finca.
-v_positions / v_net_worth / v_allocation — vistas listas para analizar. RLS: cada usuario solo ve lo suyo.
+wealth_snapshots — fotos para series temporales.
+external_snapshots — último sync crudo de Finca.
+v_positions / v_net_worth / v_allocation — vistas para analizar. RLS: cada usuario solo ve lo suyo.
 $g$),
 (3, 'finca',
- $g$Los inmuebles operativos viven en otro Postgres (Finca). Aquí solo hay el dato macro: valor de Jose, renta contratada, estado.
-No hay inquilinos, DNI, facturas ni Drive. Si hace falta operar un piso, eso es Finca, no este proyecto.
+ $g$Los inmuebles operativos viven en otro Postgres (Finca). Aquí solo hay el dato macro: valor de Jose, renta, estado.
+No hay inquilinos, DNI, facturas ni Drive.
 $g$)
 ON CONFLICT (sort) DO UPDATE SET topic = EXCLUDED.topic, content = EXCLUDED.content;
 
@@ -201,43 +303,23 @@ SELECT jsonb_build_object(
 );
 $$;
 
-ALTER TABLE public.wealth_snapshots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.external_snapshots ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS wealth_snapshots_own ON public.wealth_snapshots;
-CREATE POLICY wealth_snapshots_own ON public.wealth_snapshots
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS external_snapshots_own ON public.external_snapshots;
-CREATE POLICY external_snapshots_own ON public.external_snapshots
-  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
 GRANT SELECT ON public.ai_guide TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.assets TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.liabilities TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.wealth_snapshots TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.external_snapshots TO authenticated;
 GRANT SELECT ON public.v_positions TO authenticated;
 GRANT SELECT ON public.v_net_worth TO authenticated;
 GRANT SELECT ON public.v_allocation TO authenticated;
 GRANT EXECUTE ON FUNCTION public.patrimonio_ia() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.fym_parse_notes(text) TO authenticated;
 
-COMMENT ON TABLE public.ai_guide IS 'Leer primero. Instrucciones para cualquier IA con acceso a este Postgres. Sin cifras.';
-COMMENT ON TABLE public.assets IS 'Activos. Valor = manual_value o quantity*purchase_price. institution=finca → inmueble read-only desde la app Finca.';
+COMMENT ON TABLE public.ai_guide IS 'Leer primero. Instrucciones para cualquier IA. Sin cifras.';
+COMMENT ON TABLE public.assets IS 'Activos. Valor = manual_value o quantity*purchase_price. institution=finca → inmueble read-only.';
 COMMENT ON TABLE public.liabilities IS 'Pasivos. balance = principal vivo. mortgage no existe en Finca.';
-COMMENT ON TABLE public.profiles IS 'monthly_expenses = gasto mensual para calcular autonomía.';
-COMMENT ON TABLE public.wealth_snapshots IS 'Serie temporal de patrimonio neto.';
-COMMENT ON TABLE public.external_snapshots IS 'Último payload crudo de Finca.';
-COMMENT ON VIEW public.v_positions IS 'Activos y pasivos unificados. kind=asset|liability. extra = metadata + FYM1 notes parseadas.';
-COMMENT ON VIEW public.v_net_worth IS 'Totales por usuario. Primera vista con cifras después de patrimonio_ia().';
-COMMENT ON VIEW public.v_allocation IS 'Suma de activos por class (cash, real_estate, stock, …).';
-COMMENT ON FUNCTION public.patrimonio_ia() IS 'SELECT patrimonio_ia(); — briefing JSON completo. Requiere login (RLS) o service_role.';
-
-COMMENT ON COLUMN public.assets.name IS 'Nombre visible (banco, ticker largo, dirección corta del piso).';
-COMMENT ON COLUMN public.assets.type IS 'cash|stock|etf|crypto|commodity|real_estate|pension|bond|other';
-COMMENT ON COLUMN public.assets.manual_value IS 'Valor total EUR si no hay precio de mercado. Preferido para cash, pension, real_estate, other.';
-COMMENT ON COLUMN public.assets.is_liquid IS 'true = computa para autonomía (cash/stock/etf/crypto).';
-COMMENT ON COLUMN public.assets.source IS 'manual|finca|market';
-COMMENT ON COLUMN public.assets.read_only IS 'true para filas Finca: no editar desde FYM.';
-COMMENT ON COLUMN public.liabilities.balance IS 'Principal vivo en EUR (positivo).';
-COMMENT ON COLUMN public.liabilities.monthly_payment IS 'Cuota mensual EUR.';
-COMMENT ON COLUMN public.profiles.monthly_expenses IS 'Gasto de vida mensual EUR (colchón / autonomía).';
-
-COMMIT;
+COMMENT ON TABLE public.profiles IS 'monthly_expenses = gasto mensual para autonomía.';
+COMMENT ON VIEW public.v_positions IS 'Activos y pasivos unificados. kind=asset|liability.';
+COMMENT ON VIEW public.v_net_worth IS 'Totales por usuario.';
+COMMENT ON VIEW public.v_allocation IS 'Suma de activos por class.';
+COMMENT ON FUNCTION public.patrimonio_ia() IS 'SELECT patrimonio_ia(); — briefing JSON. Requiere login o service_role.';
