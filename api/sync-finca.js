@@ -113,6 +113,8 @@ export default async function handler(req, res) {
       ticker: null,
       ticker_source: null,
       purchase_price: null,
+      source: 'finca',
+      read_only: true,
       created_at: now,
       updated_at: now,
     }
@@ -125,12 +127,12 @@ export default async function handler(req, res) {
     if (upsertError) return res.status(500).json({ error: upsertError.message })
   }
 
+  // Inmuebles = Finca. Fuera duplicados manuales y pisos que ya no están.
   const { data: existing, error: listError } = await supabase
     .from('assets')
     .select('id')
     .eq('user_id', userId)
     .eq('type', 'real_estate')
-    .eq('institution', 'finca')
   if (listError) return res.status(500).json({ error: listError.message })
 
   const staleIds = (existing ?? []).map(r => r.id).filter(id => !incomingIds.includes(id))

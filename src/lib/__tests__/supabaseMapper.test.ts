@@ -388,6 +388,26 @@ describe('prepareMigrationPayload', () => {
     expect(merged.find(a => a.category === 'real_estate')?.name).toBe('Piso')
     expect(merged.find(a => a.category === 'cash')?.value).toBe(1)
   })
+
+  it('drops local real_estate once Finca is in the cloud', () => {
+    const cloud = [
+      baseAsset({ id: 'c1', category: 'cash', name: 'C', value: 1 }),
+      baseAsset({
+        id: 'finca-1',
+        category: 'real_estate',
+        name: 'Piso Finca',
+        value: 100,
+        source: 'finca',
+        readOnly: true,
+      }),
+    ]
+    const local = [
+      baseAsset({ id: 're1', category: 'real_estate', name: 'Piso viejo', value: 10 }),
+    ]
+    const merged = mergeCloudWithLocalRealEstate(cloud, local)
+    expect(merged.filter(a => a.category === 'real_estate')).toHaveLength(1)
+    expect(merged.find(a => a.category === 'real_estate')?.name).toBe('Piso Finca')
+  })
 })
 
 describe('migration flag idempotency', () => {

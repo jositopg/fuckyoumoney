@@ -552,13 +552,11 @@ export function mergeCloudWithLocalRealEstate(
   cloudAssets: Asset[],
   localAssets: Asset[]
 ): Asset[] {
+  const hasFincaCloud = cloudAssets.some(a => a.source === 'finca' || a.readOnly)
+  if (hasFincaCloud) return cloudAssets
   const cloudIds = new Set(cloudAssets.map(a => a.id))
-  const hasFincaCloud = cloudAssets.some(a => a.source === 'finca')
-  const localOnly = localAssets.filter(a => {
-    if (a.category !== 'real_estate') return false
-    if (cloudIds.has(a.id)) return false
-    if (hasFincaCloud && (a.source === 'finca' || a.readOnly)) return false
-    return true
-  })
+  const localOnly = localAssets.filter(
+    a => a.category === 'real_estate' && !cloudIds.has(a.id)
+  )
   return [...cloudAssets, ...localOnly]
 }
