@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import type { Asset, AssetCategory, CashMetadata, StocksMetadata, CryptoMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata, CommodityMetadata } from '../types'
+import { INVEST_CLASS_LABELS, INVEST_REGION_LABELS, STOCK_KIND_LABELS } from '../types'
 import { formatEur } from '../utils/calculations'
 
 interface AssetCardProps {
@@ -38,11 +39,12 @@ function getSecondaryLine(asset: Asset): string | null {
     case 'stocks': {
       const sm = m as StocksMetadata
       const parts = []
-      // Prefer resolved ticker over raw ISIN for readability
+      if (sm.assetType && STOCK_KIND_LABELS[sm.assetType]) parts.push(STOCK_KIND_LABELS[sm.assetType])
       const displaySymbol = sm.resolvedTicker || asset.symbol
       if (displaySymbol) parts.push(displaySymbol)
+      if (sm.region && INVEST_REGION_LABELS[sm.region]) parts.push(INVEST_REGION_LABELS[sm.region])
+      if (sm.assetClass && INVEST_CLASS_LABELS[sm.assetClass]) parts.push(INVEST_CLASS_LABELS[sm.assetClass])
       if (sm.quantity) parts.push(`${sm.quantity} u.`)
-      if (sm.pricePerUnit) parts.push(formatEur(sm.pricePerUnit) + '/u')
       return parts.join(' · ') || null
     }
     case 'crypto': {

@@ -38,14 +38,49 @@ export interface CashMetadata {
   availableFrom?: string
 }
 
+export type StockKind = 'accion' | 'etf' | 'fondo_indexado' | 'fondo_activo' | 'otro'
+export type InvestRegion = 'world' | 'us' | 'europe' | 'em' | 'spain' | 'asia' | 'mixed'
+export type InvestAssetClass = 'equity' | 'bonds' | 'mixed' | 'money_market' | 'commodity' | 'real_estate'
+
+export const STOCK_KIND_LABELS: Record<StockKind, string> = {
+  etf: 'ETF',
+  fondo_indexado: 'Fondo indexado',
+  fondo_activo: 'Fondo activo',
+  accion: 'Acción',
+  otro: 'Otro',
+}
+
+export const INVEST_REGION_LABELS: Record<InvestRegion, string> = {
+  world: 'Mundial',
+  us: 'EE.UU.',
+  europe: 'Europa',
+  em: 'Emergentes',
+  spain: 'España',
+  asia: 'Asia',
+  mixed: 'Mixto',
+}
+
+export const INVEST_CLASS_LABELS: Record<InvestAssetClass, string> = {
+  equity: 'Renta variable',
+  bonds: 'Renta fija',
+  mixed: 'Mixto',
+  money_market: 'Liquidez / monetario',
+  commodity: 'Materias primas',
+  real_estate: 'Inmobiliario cotizado',
+}
+
 export interface StocksMetadata {
-  assetType?: 'accion' | 'etf' | 'fondo_indexado' | 'fondo_activo' | 'otro'
-  identifierType?: 'ticker' | 'isin'   // how the user identified this asset
-  resolvedTicker?: string              // ticker cached after ISIN resolution (avoids repeated OpenFIGI calls)
-  canAutoUpdate?: boolean              // false for unlisted funds (no exchange price)
-  quantity?: number        // number of shares/units
-  pricePerUnit?: number    // current price per unit in EUR (auto-updated)
-  purchasePrice?: number   // average purchase price per unit (for P&L)
+  assetType?: StockKind
+  identifierType?: 'ticker' | 'isin'
+  resolvedTicker?: string
+  isin?: string
+  canAutoUpdate?: boolean
+  quantity?: number
+  pricePerUnit?: number
+  purchasePrice?: number
+  region?: InvestRegion
+  assetClass?: InvestAssetClass
+  broker?: string
 }
 
 export interface CryptoMetadata {

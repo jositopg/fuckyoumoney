@@ -47,9 +47,7 @@ export function isUuid(id: string): boolean {
 
 function mapStockTypeStrict(assetType?: StocksMetadata['assetType']): AssetType {
   if (assetType === 'accion') return 'stock'
-  if (assetType === 'etf' || assetType === 'fondo_indexado') return 'etf'
-  if (assetType === 'fondo_activo') return 'other'
-  return 'other'
+  return 'etf'
 }
 
 export function mapDebtType(debtType?: DebtMetadata['debtType']): LiabilityType {
@@ -141,8 +139,18 @@ export function localAssetToDbInsert(
     }
     case 'stocks': {
       const meta = asset.metadata as StocksMetadata | undefined
-      const ticker = asset.symbol || meta?.resolvedTicker || null
+      const ticker = asset.symbol || meta?.resolvedTicker || meta?.isin || null
       const quantity = meta?.quantity && meta.quantity > 0 ? meta.quantity : 1
+      const extra = {
+        assetType: meta?.assetType,
+        identifierType: meta?.identifierType,
+        region: meta?.region,
+        assetClass: meta?.assetClass,
+        broker: meta?.broker,
+        isin: meta?.isin,
+        resolvedTicker: meta?.resolvedTicker,
+        canAutoUpdate: meta?.canAutoUpdate,
+      }
       return {
         ...base,
         type: mapStockTypeStrict(meta?.assetType),
@@ -150,9 +158,10 @@ export function localAssetToDbInsert(
         ticker_source: ticker ? 'yahoo' : null,
         quantity,
         purchase_price: meta?.purchasePrice ?? null,
-        // Last known EUR snapshot. Live tickers still refresh on open; never revert to purchase cost.
         manual_value: asset.value,
         is_liquid: true,
+        institution: meta?.broker ?? null,
+        notes: packNotes(asset.notes, extra),
       }
     }
     case 'crypto': {
@@ -345,26 +354,41 @@ export function dbAssetToLocal(row: AssetRow): Asset {
     }
     case 'stock':
     case 'etf':
-    case 'bond':
+    case 'bond': {
+      const { human, extra } = unpackNotes(row.notes)
+      const kinds = ['accion', 'etf', 'fondo_indexado', 'fondo_activo', 'otro'] as const
+      const regions = ['world', 'us', 'europe', 'em', 'spain', 'asia', 'mixed'] as const
+      const classes = ['equity', 'bonds', 'mixed', 'money_market', 'commodity', 'real_estate'] as const
       return {
         id: row.id,
         category: 'stocks',
         name: row.name,
         value,
-        symbol: row.ticker ?? undefined,
-        notes: row.notes ?? undefined,
+        symbol: (typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : null) || row.ticker || undefined,
+        notes: human,
         metadata: {
-          assetType: reverseStockType(row.type),
+          assetType: kinds.includes(extra.assetType as (typeof kinds)[number])
+            ? (extra.assetType as StocksMetadata['assetType'])
+            : reverseStockType(row.type),
+          identifierType: extra.identifierType === 'isin' ? 'isin' : extra.identifierType === 'ticker' ? 'ticker' : undefined,
           quantity: row.quantity,
           purchasePrice: row.purchase_price ?? undefined,
-          pricePerUnit:
-            row.quantity > 0 && value > 0 ? value / row.quantity : undefined,
-          canAutoUpdate: Boolean(row.ticker),
-          resolvedTicker: row.ticker ?? undefined,
+          pricePerUnit: row.quantity > 0 && value > 0 ? value / row.quantity : undefined,
+          canAutoUpdate: extra.canAutoUpdate === false ? false : Boolean(row.ticker),
+          resolvedTicker: typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : row.ticker ?? undefined,
+          isin: typeof extra.isin === 'string' ? extra.isin : undefined,
+          region: regions.includes(extra.region as (typeof regions)[number])
+            ? (extra.region as StocksMetadata['region'])
+            : undefined,
+          assetClass: classes.includes(extra.assetClass as (typeof classes)[number])
+            ? (extra.assetClass as StocksMetadata['assetClass'])
+            : undefined,
+          broker: (typeof extra.broker === 'string' ? extra.broker : row.institution) || undefined,
         } satisfies StocksMetadata,
         createdAt: created,
         updatedAt: now,
       }
+    }
     case 'crypto':
       return {
         id: row.id,
@@ -475,6 +499,10 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         .replace(/año:\d+/g, '')
         .trim()
       if (!isVehicle) {
+        // Inversiones guardadas como type=other (bug viejo: sin assetType → other).
+        if (row.ticker || row.notes?.startsWith('FYM1:')) {
+          return dbAssetToLocal({ ...row, type: 'etf' })
+        }
         return {
           id: row.id,
           category: 'other',

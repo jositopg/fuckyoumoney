@@ -140,6 +140,21 @@ describe('supabaseMapper local → DB', () => {
     expect(fondo?.manual_value).toBe(500)
   })
 
+  it('defaults a fund without assetType to etf, not other', () => {
+    const row = localAssetToDbInsert(
+      baseAsset({
+        category: 'stocks',
+        name: 'VWCE',
+        value: 10000,
+        symbol: 'VWCE.DE',
+      }),
+      USER,
+      '44444444-4444-4444-8444-444444444445'
+    )
+    expect(row?.type).toBe('etf')
+    expect(row?.ticker).toBe('VWCE.DE')
+  })
+
   it('maps crypto with coingecko source', () => {
     const row = localAssetToDbInsert(
       baseAsset({
@@ -297,6 +312,32 @@ describe('supabaseMapper DB → local', () => {
     const asset = dbAssetToLocal(row)
     expect(asset.category).toBe('cash')
     expect(asset.metadata).toMatchObject({ accountType: 'corriente' })
+  })
+
+  it('reads a fund saved as type=other (legacy) back as stocks', () => {
+    const row: AssetRow = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaae',
+      user_id: USER,
+      name: 'VWCE',
+      type: 'other',
+      ticker: 'VWCE.DE',
+      ticker_source: 'yahoo',
+      quantity: 10,
+      purchase_price: null,
+      purchase_date: null,
+      manual_value: 12000,
+      currency: 'EUR',
+      institution: null,
+      country: null,
+      notes: null,
+      is_liquid: true,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+    }
+    const asset = dbAssetToLocal(row)
+    expect(asset.category).toBe('stocks')
+    expect(asset.symbol).toBe('VWCE.DE')
+    expect(asset.value).toBe(12000)
   })
 
   it('unpacks cash job and TAE from packed notes', () => {

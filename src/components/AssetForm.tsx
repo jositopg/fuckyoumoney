@@ -7,10 +7,23 @@ import type {
   CashMetadata,
   CryptoMetadata,
   DebtMetadata,
+  InvestAssetClass,
+  InvestRegion,
+  PensionMetadata,
+  StockKind,
   StocksMetadata,
 } from '../types'
-import { CASH_JOB_LABELS, CASH_PURPOSE_JOBS, CATEGORY_LABELS, PARKED_REASON_PRESETS } from '../types'
+import {
+  CASH_JOB_LABELS,
+  CASH_PURPOSE_JOBS,
+  CATEGORY_LABELS,
+  INVEST_CLASS_LABELS,
+  INVEST_REGION_LABELS,
+  PARKED_REASON_PRESETS,
+  STOCK_KIND_LABELS,
+} from '../types'
 import { BottomSheet } from './BottomSheet'
+import { isISIN } from '../utils/priceUpdater'
 
 interface AssetFormProps {
   isOpen: boolean
@@ -61,6 +74,10 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   const [notes, setNotes] = useState('')
   const [showMore, setShowMore] = useState(false)
   const [error, setError] = useState('')
+  const [stockKind, setStockKind] = useState<StockKind>('etf')
+  const [region, setRegion] = useState<InvestRegion>('world')
+  const [assetClass, setAssetClass] = useState<InvestAssetClass>('equity')
+  const [broker, setBroker] = useState('')
 
   useEffect(() => {
     if (!isOpen) return
@@ -83,8 +100,17 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
         cashMeta?.job === 'emergency' || cashMeta?.job === 'parked' ? cashMeta.job : 'idle'
       )
       setParkedReason(cashMeta?.parkedReason || '')
+      const st = editAsset.metadata as StocksMetadata | PensionMetadata | undefined
+      setStockKind(st && 'assetType' in st && st.assetType ? st.assetType : 'etf')
+      setRegion(st && 'region' in st && st.region ? st.region : 'world')
+      setAssetClass(st && 'assetClass' in st && st.assetClass ? st.assetClass : 'equity')
+      setBroker(
+        (st && 'broker' in st && st.broker) ||
+          (st && 'manager' in st && st.manager) ||
+          ''
+      )
       setNotes(editAsset.notes || '')
-      setShowMore(Boolean(editAsset.symbol || dm?.monthlyPayment || editAsset.notes))
+      setShowMore(Boolean(dm?.monthlyPayment || editAsset.notes))
     } else {
       setKind('cash')
       setCategory('cash')
@@ -97,6 +123,10 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setInterestRate('')
       setCashJob('idle')
       setParkedReason('')
+      setStockKind('etf')
+      setRegion('world')
+      setAssetClass('equity')
+      setBroker('')
       setNotes('')
       setShowMore(false)
     }
@@ -127,6 +157,14 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setError('Di el motivo del apartado (reforma, juicio, impuestos…)')
       return
     }
+    if (category === 'stocks' && !symbol.trim()) {
+      setError('Pon el ticker o el ISIN para identificar el fondo (VWCE.DE, IE00BK5BQT80…)')
+      return
+    }
+    if (category === 'crypto' && !symbol.trim()) {
+      setError('Pon el ticker (BTC, ETH…)')
+      return
+    }
 
     const rate = interestRate ? Number(interestRate.replace(',', '.')) : undefined
     let metadata: Asset['metadata']
@@ -146,21 +184,33 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       }
     } else if (category === 'stocks') {
       const qty = quantity ? Number(quantity.replace(',', '.')) : undefined
+      const idRaw = symbol.trim().toUpperCase()
+      const asIsin = isISIN(idRaw)
+      const prev = editAsset?.metadata as StocksMetadata | undefined
       metadata = {
+        ...prev,
+        assetType: stockKind,
+        identifierType: asIsin ? 'isin' : 'ticker',
+        isin: asIsin ? idRaw : prev?.isin,
         quantity: qty,
         pricePerUnit: qty && qty > 0 ? v / qty : undefined,
-        canAutoUpdate: Boolean(symbol.trim()),
+        canAutoUpdate: Boolean(idRaw) && stockKind !== 'fondo_activo',
+        region,
+        assetClass,
+        broker: broker.trim() || undefined,
       }
     } else if (category === 'crypto') {
       const qty = quantity ? Number(quantity.replace(',', '.')) : undefined
       metadata = { quantity: qty, pricePerUnit: qty && qty > 0 ? v / qty : undefined }
+    } else if (category === 'pension') {
+      metadata = { manager: broker.trim() || undefined }
     }
 
     onSave({
       category,
       name: name.trim(),
       value: v,
-      symbol: symbol.trim() || undefined,
+      symbol: symbol.trim() ? (category === 'stocks' ? symbol.trim().toUpperCase() : symbol.trim()) : undefined,
       notes: notes.trim() || undefined,
       metadata,
       source: editAsset?.source ?? 'manual',
@@ -255,7 +305,13 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder={kind === 'cash' ? 'BBVA, Trade Republic…' : 'Nombre'}
+              placeholder={
+                kind === 'cash'
+                  ? 'BBVA, Trade Republic…'
+                  : kind === 'invest' && category === 'stocks'
+                    ? 'Vanguard FTSE All-World, VWCE…'
+                    : 'Nombre'
+              }
               className={inputClass}
             />
           </div>
@@ -272,6 +328,121 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
               className={inputClass}
             />
           </div>
+
+          {kind === 'invest' && category === 'stocks' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Instrumento</label>
+                <select
+                  value={stockKind}
+                  onChange={e => setStockKind(e.target.value as StockKind)}
+                  className={inputClass + ' appearance-none'}
+                >
+                  {(Object.keys(STOCK_KIND_LABELS) as StockKind[]).map(k => (
+                    <option key={k} value={k}>
+                      {STOCK_KIND_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
+                  Ticker o ISIN
+                </label>
+                <input
+                  value={symbol}
+                  onChange={e => setSymbol(e.target.value)}
+                  placeholder="VWCE.DE o IE00BK5BQT80"
+                  className={inputClass}
+                />
+                <p className="text-label-sm text-on-surface/45 font-body mt-1.5">
+                  Así se identifica el mismo fondo en la cartera. Sin esto acaba en Otros y una IA no sabe qué es.
+                </p>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Participaciones</label>
+                <input
+                  inputMode="decimal"
+                  value={quantity}
+                  onChange={e => setQuantity(e.target.value)}
+                  placeholder="Opcional"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Zona</label>
+                <select
+                  value={region}
+                  onChange={e => setRegion(e.target.value as InvestRegion)}
+                  className={inputClass + ' appearance-none'}
+                >
+                  {(Object.keys(INVEST_REGION_LABELS) as InvestRegion[]).map(k => (
+                    <option key={k} value={k}>
+                      {INVEST_REGION_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Clase</label>
+                <select
+                  value={assetClass}
+                  onChange={e => setAssetClass(e.target.value as InvestAssetClass)}
+                  className={inputClass + ' appearance-none'}
+                >
+                  {(Object.keys(INVEST_CLASS_LABELS) as InvestAssetClass[]).map(k => (
+                    <option key={k} value={k}>
+                      {INVEST_CLASS_LABELS[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Broker</label>
+                <input
+                  value={broker}
+                  onChange={e => setBroker(e.target.value)}
+                  placeholder="Indexa, MyInvestor, IBKR…"
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
+
+          {kind === 'invest' && category === 'crypto' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Ticker</label>
+                <input
+                  value={symbol}
+                  onChange={e => setSymbol(e.target.value)}
+                  placeholder="BTC, ETH…"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Cantidad</label>
+                <input
+                  inputMode="decimal"
+                  value={quantity}
+                  onChange={e => setQuantity(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          )}
+
+          {kind === 'invest' && category === 'pension' && (
+            <div>
+              <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Gestor</label>
+              <input
+                value={broker}
+                onChange={e => setBroker(e.target.value)}
+                placeholder="Indexa, Caser, empleo…"
+                className={inputClass}
+              />
+            </div>
+          )}
 
           {kind === 'cash' && (
             <div>
@@ -348,20 +519,6 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
 
           {showMore && (
             <div className="space-y-4">
-              {(category === 'stocks' || category === 'crypto') && (
-                <>
-                  <div>
-                    <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
-                      Ticker {category === 'crypto' ? '(BTC, ETH…)' : '(VWCE.DE, AAPL…)'}
-                    </label>
-                    <input value={symbol} onChange={e => setSymbol(e.target.value)} className={inputClass} />
-                  </div>
-                  <div>
-                    <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">Participaciones</label>
-                    <input inputMode="decimal" value={quantity} onChange={e => setQuantity(e.target.value)} className={inputClass} />
-                  </div>
-                </>
-              )}
               {kind === 'debt' && (
                 <>
                   <div>
