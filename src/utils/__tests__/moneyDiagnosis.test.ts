@@ -343,6 +343,127 @@ describe('diagnoseWealth', () => {
     expect(d.moves.find(m => m.id === 'vacant_re')?.detail).toMatch(/fondos/)
   })
 
+  it('puts a landlord 80%+ brick outside the 50–70 band without ordering a sale', () => {
+    const d = diagnoseWealth(
+      [
+        asset({ category: 'cash', name: 'Caja', value: 400000 }),
+        asset({ category: 'stocks', name: 'VWCE', value: 30000 }),
+        asset({
+          category: 'real_estate',
+          name: 'Bloque',
+          value: 1500000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 4000,
+            ttmNetCashflow: 20000,
+            valueSource: 'mercado',
+          },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Otro',
+          value: 500000,
+          metadata: { propertyType: 'alquiler', status: 'alquilado', monthlyRent: 900, ttmNetCashflow: 4000, valueSource: 'mercado' },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Tercero',
+          value: 400000,
+          metadata: { propertyType: 'alquiler', status: 'alquilado', monthlyRent: 700, ttmNetCashflow: 3000, valueSource: 'mercado' },
+        }),
+      ],
+      2000,
+      12
+    )
+    expect(d.mix.target.profile).toBe('landlord')
+    expect(d.mix.realEstatePct).toBeGreaterThan(70)
+    expect(d.mix.target.brickOverEur).toBeGreaterThan(0)
+    expect(d.mix.target.fundsShortEur).toBeGreaterThan(0)
+    expect(d.mix.target.closableNow).toBeGreaterThan(0)
+    expect(d.mix.target.afterDeploy.investedPct).toBeLessThan(20)
+    expect(d.mix.stance).toBe('rebalance_with_cash')
+    expect(d.moves.some(m => m.stance === 'divest')).toBe(false)
+    expect(d.mix.line).toMatch(/No vender/)
+  })
+
+  it('does not put the home in the rental band', () => {
+    const d = diagnoseWealth(
+      [
+        asset({ category: 'cash', name: 'Caja', value: 200000 }),
+        asset({ category: 'stocks', name: 'VWCE', value: 40000 }),
+        asset({
+          category: 'real_estate',
+          name: 'Casa',
+          value: 400000,
+          metadata: { propertyType: 'vivienda_habitual', status: 'vivienda_habitual', valueSource: 'mercado' },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Piso',
+          value: 300000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 900,
+            ttmNetCashflow: 7000,
+            valueSource: 'mercado',
+          },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Local',
+          value: 200000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 800,
+            ttmNetCashflow: 6000,
+            valueSource: 'mercado',
+          },
+        }),
+        asset({
+          category: 'real_estate',
+          name: 'Otro',
+          value: 150000,
+          metadata: {
+            propertyType: 'alquiler',
+            status: 'alquilado',
+            monthlyRent: 600,
+            ttmNetCashflow: 4000,
+            valueSource: 'mercado',
+          },
+        }),
+      ],
+      2000,
+      6
+    )
+    const rental = d.mix.target.sleeves.find(s => s.id === 'real_estate')
+    const home = d.mix.target.sleeves.find(s => s.id === 'home')
+    expect(d.mix.target.profile).toBe('landlord')
+    expect(home?.current).toBe(400000)
+    expect(rental?.current).toBe(650000)
+    expect(rental?.currentPct).toBeLessThan(70)
+    expect(d.mix.target.brickOverEur).toBe(0)
+    expect(d.mix.realEstatePct).toBeGreaterThan(70)
+    expect(d.mix.stance).toBe('rebalance_with_cash')
+  })
+
+  it('uses financial bands when there is no rental book', () => {
+    const d = diagnoseWealth(
+      [
+        asset({ category: 'cash', name: 'Colchón', value: 12000, metadata: { job: 'emergency' } }),
+        asset({ category: 'stocks', name: 'VWCE', value: 80000 }),
+      ],
+      2000,
+      6
+    )
+    expect(d.mix.target.profile).toBe('financial')
+    const funds = d.mix.target.sleeves.find(s => s.id === 'invested')
+    expect(funds?.band).toEqual({ min: 60, max: 85 })
+    expect(d.mix.target.brickOverEur).toBe(0)
+  })
+
   it('recommends selling vacant brick when a rent stop would break the cash', () => {
     const d = diagnoseWealth(
       [

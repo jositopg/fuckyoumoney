@@ -6,8 +6,8 @@ import {
   parkedSlices,
   type CapitalMove,
   type DiagnosisQuestion,
-  type MixAnalysis,
 } from '../utils/moneyDiagnosis'
+import { MixPanel } from './AllocationPanel'
 
 interface WealthStatusProps {
   assets: Asset[]
@@ -23,6 +23,13 @@ const VERDICT_TONE: Record<string, string> = {
   solid: 'bg-primary-container/30',
 }
 
+const VERDICT_LABEL: Record<string, string> = {
+  unknown: 'Faltan datos',
+  weak: 'Ahora mismo',
+  ok: 'Bien, con matices',
+  solid: 'En orden',
+}
+
 export function WealthStatus({
   assets,
   monthlyExpenses,
@@ -34,53 +41,46 @@ export function WealthStatus({
   const d = diagnoseWealth(assets, monthlyExpenses, emergencyTargetMonths)
   const { buckets, realEstate: re, cashflow } = d
   const hasCash = buckets.unparked + buckets.parked > 0
+  const coverage =
+    cashflow.expenseCoverage != null ? Math.round(cashflow.expenseCoverage * 100) : null
 
   return (
     <div className="mb-6 space-y-3">
-      <section className={`rounded-xl p-4 ${VERDICT_TONE[d.verdict]}`}>
-        <p className="text-label-sm font-semibold text-on-surface/45 font-body uppercase tracking-wide mb-1">
-          {d.verdict === 'unknown'
-            ? 'Faltan datos'
-            : d.verdict === 'weak'
-              ? 'Ahora mismo'
-              : d.verdict === 'ok'
-                ? 'Bien, con matices'
-                : 'En orden'}
+      <section className={`rounded-xl px-4 py-3 ${VERDICT_TONE[d.verdict]}`}>
+        <p className="text-label-sm font-semibold text-on-surface/45 font-body uppercase tracking-wide">
+          {VERDICT_LABEL[d.verdict]}
         </p>
-        <p className="text-body font-medium text-on-surface font-body leading-relaxed">{d.headline}</p>
-        {d.cashflow.expenseCoverage != null && (
-          <p className="text-label text-on-surface/55 font-body mt-2">
-            {d.cashflow.expenseCoverage >= 1
-              ? 'La renta neta cubre tus gastos. El patrimonio ya paga la vida.'
-              : `La renta neta cubre el ${Math.round(d.cashflow.expenseCoverage * 100)}% de tus gastos.`}
+        <p className="text-body font-medium text-on-surface font-body leading-snug mt-0.5">{d.headline}</p>
+        {coverage != null && (
+          <p className="text-label-sm font-body tabular-nums text-on-surface/50 mt-1">
+            Renta neta cubre {coverage}%
           </p>
         )}
         {d.questions.length > 0 && (
-          <div className="mt-3 space-y-2">
+          <div className="mt-2 flex flex-col gap-1.5">
             {d.questions.map(q => (
               <button
                 key={q.id}
                 type="button"
                 onClick={() => onAsk?.(q)}
-                className="w-full text-left rounded-xl bg-surface/70 px-3 py-2.5
-                  hover:bg-surface transition-colors"
+                className="w-full text-left rounded-lg bg-surface/70 px-3 py-2
+                  hover:bg-surface transition-colors text-label font-medium text-on-surface font-body"
               >
-                <p className="text-label font-medium text-on-surface font-body">{q.prompt}</p>
-                <p className="text-label-sm text-on-surface/50 font-body mt-0.5 leading-relaxed">{q.why}</p>
+                {q.prompt}
               </button>
             ))}
           </div>
         )}
       </section>
 
-      {d.mix.totalAssets > 0 && <MixCard mix={d.mix} />}
+      {d.mix.totalAssets > 0 && <MixPanel mix={d.mix} />}
 
       {d.moves.length > 0 && (
         <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
-          <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
+          <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-2">
             Qué hacer
           </h3>
-          <ul className="space-y-3">
+          <ul className="divide-y divide-surface-container-low">
             {d.moves.map(m => (
               <MoveRow key={m.id} move={m} />
             ))}
@@ -93,20 +93,20 @@ export function WealthStatus({
           <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
             Efectivo
           </h3>
-          <ul className="space-y-2">
-            <BucketRow
+          <div className="grid grid-cols-3 gap-2">
+            <CashStat
               label="Colchón"
               value={buckets.emergencyAssigned}
               hint={
                 buckets.emergencyAssumed
-                  ? 'sin asignar'
+                  ? 'sin marcar'
                   : cashflow.emergencyMonths != null
-                    ? `${cashflow.emergencyMonths} meses · puede remunerar`
-                    : 'puede remunerar'
+                    ? `${cashflow.emergencyMonths} m`
+                    : undefined
               }
               muted={buckets.emergencyAssumed}
             />
-            <BucketRow
+            <CashStat
               label="Apartado"
               value={buckets.parked}
               hint={
@@ -114,61 +114,43 @@ export function WealthStatus({
                   ? parkedSlices(assets)
                       .map(s => s.reason)
                       .join(', ')
-                  : 'reforma, juicio…'
+                  : undefined
               }
             />
-            <BucketRow
+            <CashStat
               label="A invertir"
               value={buckets.toInvest}
-              hint={buckets.toInvest > 0 ? 'ni colchón ni apartado' : undefined}
               warn={buckets.toInvest > 0}
             />
-          </ul>
+          </div>
         </section>
       )}
 
       {re.properties > 0 && (
         <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
-          <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
-            Inmuebles
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-label-sm text-on-surface/50 font-body">Valor</p>
-              <p className="text-headline font-display font-semibold text-on-surface tabular-nums">
-                {formatEur(re.value, true)}
-              </p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface/50 font-body">Neto 12 meses</p>
-              <p
-                className={`text-headline font-display font-semibold tabular-nums ${
-                  re.ttmNetCashflow > 0 ? 'text-primary' : 'text-on-surface'
-                }`}
-              >
-                {formatEur(Math.round(re.ttmNetCashflow), true)}
-              </p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface/50 font-body">Bruto contratado</p>
-              <p className="text-body font-semibold text-on-surface font-body tabular-nums">
-                {formatEur(re.monthlyGrossRent)}/mes
-              </p>
-            </div>
-            <div>
-              <p className="text-label-sm text-on-surface/50 font-body">Rentabilidad neta</p>
-              <p className="text-body font-semibold text-on-surface font-body tabular-nums">
-                {re.netYieldPct == null ? '—' : `${re.netYieldPct}%`}
-              </p>
-            </div>
-          </div>
-          {(re.vacant > 0 || re.habitualValue > 0) && (
-            <p className="text-label-sm text-on-surface/45 font-body mt-3">
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide">
+              Inmuebles
+            </h3>
+            <p className="text-label-sm text-on-surface/45 font-body">
               {re.rented} alquilados
               {re.vacant > 0 ? ` · ${re.vacant} vacíos` : ''}
-              {re.habitualValue > 0 ? ` · vivienda ${formatEur(re.habitualValue, true)}` : ''}
             </p>
-          )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label="Valor" value={formatEur(re.value, true)} />
+            <Stat
+              label="Neto 12 meses"
+              value={formatEur(Math.round(re.ttmNetCashflow), true)}
+              tone={re.ttmNetCashflow > 0 ? 'text-primary' : undefined}
+            />
+            <Stat label="Bruto" value={`${formatEur(re.monthlyGrossRent)}/mes`} small />
+            <Stat
+              label="Rentabilidad neta"
+              value={re.netYieldPct == null ? '—' : `${re.netYieldPct}%`}
+              small
+            />
+          </div>
         </section>
       )}
     </div>
@@ -184,54 +166,17 @@ const STANCE_TONE: Record<string, string> = {
   divest: 'text-error',
 }
 
-const MIX_LABEL: Record<MixAnalysis['stance'], string> = {
-  ok: 'Mezcla',
-  rebalance_with_cash: 'Mezcla · no vender',
-  divest_brick: 'Mezcla · reducir ladrillo',
-  unknown: 'Mezcla',
-}
-
-function MixCard({ mix }: { mix: MixAnalysis }) {
-  return (
-    <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">
-      <h3 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
-        {MIX_LABEL[mix.stance]}
-      </h3>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-label font-body tabular-nums mb-3">
-        <span className="text-on-surface">
-          Ladrillo <span className="font-semibold">{mix.realEstatePct}%</span>
-        </span>
-        <span className="text-on-surface/70">
-          Efectivo <span className="font-semibold">{mix.cashPct}%</span>
-        </span>
-        <span className="text-on-surface/70">
-          Fondos <span className="font-semibold">{mix.investedPct}%</span>
-        </span>
-      </div>
-      <p className="text-body font-medium text-on-surface font-body leading-relaxed">{mix.headline}</p>
-      <p className="text-label-sm text-on-surface/50 font-body mt-1.5 leading-relaxed">{mix.detail}</p>
-      {mix.shockMonths != null && (
-        <p className="text-label-sm text-on-surface/45 font-body mt-2">
-          Si el alquiler para: {mix.shockMonths} meses de efectivo
-          {mix.shockTargetMonths > 6 ? ` · con tanto ladrillo, holgura ${mix.shockTargetMonths} meses` : ''}
-        </p>
-      )}
-    </section>
-  )
-}
-
 function MoveRow({ move }: { move: CapitalMove }) {
   return (
-    <li className="flex items-start justify-between gap-3">
+    <li className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
       <div className="min-w-0">
         <p className={`text-label-sm font-semibold font-body uppercase tracking-wide ${STANCE_TONE[move.stance]}`}>
           {CAPITAL_STANCE_LABELS[move.stance]}
         </p>
-        <p className="text-label font-medium text-on-surface font-body mt-0.5">{move.title}</p>
-        <p className="text-label-sm text-on-surface/50 font-body mt-0.5 leading-relaxed">{move.detail}</p>
+        <p className="text-label font-medium text-on-surface font-body truncate">{move.title}</p>
       </div>
       {move.amount != null && (
-        <span className="text-label font-semibold font-body tabular-nums text-on-surface flex-shrink-0">
+        <span className="text-lg font-display font-semibold tabular-nums text-on-surface flex-shrink-0">
           {formatEur(move.amount, true)}
         </span>
       )}
@@ -239,7 +184,7 @@ function MoveRow({ move }: { move: CapitalMove }) {
   )
 }
 
-function BucketRow({
+function CashStat({
   label,
   value,
   hint,
@@ -253,18 +198,41 @@ function BucketRow({
   muted?: boolean
 }) {
   return (
-    <li className="flex items-baseline justify-between gap-3">
-      <span className={`text-label font-body ${muted ? 'text-on-surface/40' : 'text-on-surface/70'}`}>
-        {label}
-        {hint && <span className="text-on-surface/40 font-normal"> · {hint}</span>}
-      </span>
-      <span
-        className={`text-label font-semibold font-body tabular-nums ${
+    <div>
+      <p className="text-label-sm text-on-surface/50 font-body truncate">{label}</p>
+      <p
+        className={`text-headline font-display font-semibold tabular-nums ${
           warn ? 'text-error' : muted ? 'text-on-surface/40' : 'text-on-surface'
         }`}
       >
-        {muted && value === 0 ? '—' : formatEur(value)}
-      </span>
-    </li>
+        {muted && value === 0 ? '—' : formatEur(value, true)}
+      </p>
+      {hint && (
+        <p className="text-label-sm text-on-surface/40 font-body truncate mt-0.5">{hint}</p>
+      )}
+    </div>
+  )
+}
+
+function Stat({
+  label,
+  value,
+  tone,
+  small,
+}: {
+  label: string
+  value: string
+  tone?: string
+  small?: boolean
+}) {
+  return (
+    <div>
+      <p className="text-label-sm text-on-surface/50 font-body">{label}</p>
+      <p
+        className={`${small ? 'text-body font-semibold font-body' : 'text-headline font-display font-semibold'} tabular-nums ${tone ?? 'text-on-surface'}`}
+      >
+        {value}
+      </p>
+    </div>
   )
 }

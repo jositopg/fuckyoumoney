@@ -9,7 +9,6 @@ import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
 import { NetWorthHero } from './components/NetWorthHero'
 import { WealthStatus } from './components/WealthStatus'
-import { AllocationPanel } from './components/AllocationPanel'
 import { FincaSyncBanner } from './components/FincaSyncBanner'
 import { CategorySection } from './components/CategorySection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
@@ -428,8 +427,6 @@ export default function App() {
             }}
           />
         )}
-
-        {hasAnyAssets && <AllocationPanel assets={data.assets} />}
 
         {auth.user && (
           <FincaSyncBanner

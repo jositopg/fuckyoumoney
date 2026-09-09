@@ -56,6 +56,7 @@ async function main() {
       'Los inmuebles source=finca son de solo lectura; la gestión vive en la app Finca.',
       'Finca no envía principal de hipoteca. Si hay hipotecas, están en FYM liabilities.',
       'Autonomía = (efectivo − deudas) / gastos mensuales. El ladrillo no cuenta para autonomía.',
+      'Mezcla: bandas, no un % mágico. Landlord: ladrillo 50–70, fondos 20–35. Financial: fondos 60–85, ladrillo 0–25. Colchón = N meses, no un % del neto. Ladrillo alto no implica vender si mix.stance ≠ divest_brick.',
     ],
     sources: { finca: false, fuckyoumoney: false },
     finca: null,
