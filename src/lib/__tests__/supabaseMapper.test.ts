@@ -71,6 +71,27 @@ describe('supabaseMapper local → DB', () => {
     expect(row?.notes).toContain('impuestos 2026')
   })
 
+  it('packs cash slices into notes', () => {
+    const row = localAssetToDbInsert(
+      baseAsset({
+        category: 'cash',
+        name: 'BBVA',
+        value: 10000,
+        metadata: {
+          slices: [
+            { job: 'emergency', amount: 3000 },
+            { job: 'parked', amount: 2000, parkedReason: 'Reforma' },
+          ],
+        },
+      }),
+      USER,
+      '22222222-2222-4222-8222-222222222225'
+    )
+    expect(row?.notes).toContain('slices')
+    expect(row?.notes).toContain('emergency')
+    expect(row?.notes).toContain('Reforma')
+  })
+
   it('maps cash accountType to institution', () => {
     const row = localAssetToDbInsert(
       baseAsset({
@@ -381,6 +402,36 @@ describe('supabaseMapper DB → local', () => {
       job: 'parked',
       parkedReason: 'impuestos',
       interestRate: 1.5,
+    })
+  })
+
+  it('unpacks cash slices from packed notes', () => {
+    const row: AssetRow = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaad',
+      user_id: USER,
+      name: 'BBVA',
+      type: 'cash',
+      ticker: null,
+      ticker_source: null,
+      quantity: 1,
+      purchase_price: null,
+      purchase_date: null,
+      manual_value: 10000,
+      currency: 'EUR',
+      institution: null,
+      country: null,
+      notes:
+        'FYM1:{"slices":[{"job":"emergency","amount":3000},{"job":"parked","amount":2000,"parkedReason":"Reforma"}]}',
+      is_liquid: true,
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+    }
+    const asset = dbAssetToLocal(row)
+    expect(asset.metadata).toMatchObject({
+      slices: [
+        { job: 'emergency', amount: 3000 },
+        { job: 'parked', amount: 2000, parkedReason: 'Reforma' },
+      ],
     })
   })
 

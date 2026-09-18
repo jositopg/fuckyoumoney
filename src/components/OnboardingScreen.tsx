@@ -18,7 +18,7 @@ export function OnboardingScreen({ onStart }: OnboardingScreenProps) {
         Cuentas, fondos, deudas. Los inmuebles llegan solos desde Finca. Tú pones los importes; la foto no se mueve sola.
       </p>
       <ul className="space-y-3 text-label font-body text-on-surface/70 mb-12">
-        <li>Di qué hace el efectivo: colchón, aparcado o a invertir.</li>
+        <li>El saldo es del banco. En una cuenta puedes dejar colchón, un apartado y el resto a invertir.</li>
         <li>Cuando mires el banco, actualiza el saldo. Si sigue igual, confírmalo.</li>
         <li>Los inmuebles muestran valor y neto de verdad, no solo el alquiler contratado.</li>
       </ul>

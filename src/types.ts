@@ -26,16 +26,25 @@ export const CASH_PURPOSE_JOBS: CashJob[] = ['emergency', 'parked', 'idle']
 
 export const PARKED_REASON_PRESETS = ['Reforma', 'Juicio', 'Impuestos', 'Entrada'] as const
 
+/** A slice of one bank account. Several slices may share the same account. */
+export interface CashSlice {
+  job: CashJob
+  amount: number
+  parkedReason?: string
+}
+
 export interface CashMetadata {
   accountType?: 'corriente' | 'ahorro' | 'remunerada' | 'nomina' | 'otro'
   interestRate?: number    // annual % for remunerada/ahorro accounts
   lastInterestUpdate?: string // ISO date — last time compound interest was applied
-  /** What this cash is for. Default: idle (should be invested). TAE does not change the job. */
+  /** Whole-account purpose when there are no slices. Default: idle. */
   job?: CashJob
-  /** Required when job=parked — reformas, juicios, impuestos, entrada… */
+  /** Required when the parked slice/job is used. */
   parkedReason?: string
   /** When parked money becomes free (ISO date). */
   availableFrom?: string
+  /** Split of this account. Remainder of value − slices = a invertir. */
+  slices?: CashSlice[]
 }
 
 export type StockKind = 'accion' | 'etf' | 'fondo_indexado' | 'fondo_activo' | 'otro'

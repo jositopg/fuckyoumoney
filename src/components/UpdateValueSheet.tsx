@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Asset, CashMetadata } from '../types'
-import { CASH_JOB_LABELS } from '../types'
-import { cashJob } from '../utils/moneyDiagnosis'
+import type { Asset } from '../types'
+import { formatCashJobsLine } from '../utils/moneyDiagnosis'
 import { formatEur } from '../utils/calculations'
 import { formatAsOf, formatEurInput, parseEur } from '../utils/declaredValue'
 import { BottomSheet } from './BottomSheet'
@@ -17,13 +16,7 @@ interface UpdateValueSheetProps {
   onEditDetails: () => void
 }
 
-function jobLine(asset: Asset): string | null {
-  if (asset.category !== 'cash') return null
-  const job = cashJob(asset)
-  const reason = (asset.metadata as CashMetadata | undefined)?.parkedReason
-  if (job === 'parked') return reason ? `Apartado · ${reason}` : 'Apartado'
-  return CASH_JOB_LABELS[job]
-}
+
 
 export function UpdateValueSheet({
   isOpen,
@@ -66,8 +59,8 @@ export function UpdateValueSheet({
       <form onSubmit={submit} className="space-y-5 mt-1">
         <div>
           <p className="font-display font-semibold text-on-surface text-headline leading-tight">{asset.name}</p>
-          {jobLine(asset) && (
-            <p className="text-label text-on-surface/50 font-body mt-1">{jobLine(asset)}</p>
+          {formatCashJobsLine(asset) && (
+            <p className="text-label text-on-surface/50 font-body mt-1">{formatCashJobsLine(asset)}</p>
           )}
           <p className="text-label-sm text-on-surface/40 font-body mt-1">
             Foto del {formatAsOf(asset.updatedAt)} · {formatEur(asset.value)}

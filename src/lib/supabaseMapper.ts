@@ -2,6 +2,7 @@ import type {
   Asset,
   AssetCategory,
   CashMetadata,
+  CashSlice,
   CommodityMetadata,
   CryptoMetadata,
   DebtMetadata,
@@ -44,6 +45,27 @@ export function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     id
   )
+}
+
+function parseCashSlices(raw: unknown): CashSlice[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const jobs = ['emergency', 'parked', 'working', 'idle'] as const
+  const out: CashSlice[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    if (!jobs.includes(o.job as (typeof jobs)[number])) continue
+    const amount = Number(o.amount)
+    if (!Number.isFinite(amount) || amount <= 0) continue
+    const job: CashSlice['job'] = o.job === 'working' ? 'idle' : (o.job as CashSlice['job'])
+    const parkedReason = typeof o.parkedReason === 'string' ? o.parkedReason.trim() : ''
+    out.push({
+      job,
+      amount,
+      ...(parkedReason ? { parkedReason } : {}),
+    })
+  }
+  return out.length > 0 ? out : undefined
 }
 
 function mapStockTypeStrict(assetType?: StocksMetadata['assetType']): AssetType {
@@ -150,6 +172,7 @@ export function localAssetToDbInsert(
         parkedReason: meta?.parkedReason,
         availableFrom: meta?.availableFrom,
         lastInterestUpdate: meta?.lastInterestUpdate,
+        slices: meta?.slices,
       }
       return {
         ...base,
@@ -359,6 +382,7 @@ export function dbAssetToLocal(row: AssetRow): Asset {
       const job = jobs.includes(extra.job as (typeof jobs)[number])
         ? (extra.job as CashMetadata['job'])
         : undefined
+      const slices = parseCashSlices(extra.slices)
       return {
         id: row.id,
         category: 'cash',
@@ -374,6 +398,7 @@ export function dbAssetToLocal(row: AssetRow): Asset {
           ...(typeof extra.lastInterestUpdate === 'string'
             ? { lastInterestUpdate: extra.lastInterestUpdate }
             : {}),
+          ...(slices ? { slices } : {}),
         } satisfies CashMetadata,
         createdAt: created,
         updatedAt: now,

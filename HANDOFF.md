@@ -59,3 +59,4 @@ cd ~/Proyectos/fuck-you-money && npm run wealth
 - Snapshots mensuales aún en localStorage (el sparkline del hero no viaja de dispositivo).
 - `patrimonio_ia()` SQL sigue con umbral mixto 60% / 15% fondos; la app usa bandas landlord/financial. La portada manda; SQL es briefing.
 - Los importes son declarados (sin banco ni precios al abrir). Jose confirma saldos de vez en cuando.
+- Una cuenta puede partirse (colchón + apartado + resto a invertir). No hace falta duplicar BBVA.

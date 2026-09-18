@@ -3,6 +3,7 @@ import type { Asset, AssetCategory, CashMetadata, StocksMetadata, CryptoMetadata
 import { INVEST_CLASS_LABELS, INVEST_REGION_LABELS, STOCK_KIND_LABELS } from '../types'
 import { formatEur } from '../utils/calculations'
 import { formatAsOf, isCashStale } from '../utils/declaredValue'
+import { formatCashJobsLine } from '../utils/moneyDiagnosis'
 
 interface AssetCardProps {
   asset: Asset
@@ -31,9 +32,8 @@ function getSecondaryLine(asset: Asset): string | null {
     case 'cash': {
       const cm = m as CashMetadata
       const parts = []
-      if (cm.job === 'emergency') parts.push('Colchón')
-      else if (cm.job === 'parked') parts.push(cm.parkedReason ? `Apartado · ${cm.parkedReason}` : 'Apartado')
-      else parts.push('A invertir')
+      const jobs = formatCashJobsLine(asset)
+      if (jobs) parts.push(jobs)
       if (cm.interestRate) parts.push(`${cm.interestRate}% TAE`)
       return parts.join(' · ') || null
     }

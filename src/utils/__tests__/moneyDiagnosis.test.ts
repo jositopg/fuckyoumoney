@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Asset } from '../../types'
 import {
+  buildCashPurpose,
+  cashAllocations,
   cashJob,
   deployableCash,
   diagnoseWealth,
+  formatCashJobsLine,
   largestIdleCash,
   moneyBuckets,
   realEstateYield,
@@ -58,6 +61,80 @@ describe('cashJob', () => {
   })
 })
 
+describe('cashAllocations', () => {
+  it('splits one bank account into several jobs', () => {
+    const a = cashAllocations(
+      asset({
+        category: 'cash',
+        name: 'BBVA',
+        value: 100000,
+        metadata: {
+          slices: [
+            { job: 'emergency', amount: 24000 },
+            { job: 'parked', amount: 30000, parkedReason: 'Reforma' },
+          ],
+        },
+      })
+    )
+    expect(a).toMatchObject({
+      emergency: 24000,
+      parked: 30000,
+      idle: 46000,
+      parkedReason: 'Reforma',
+    })
+  })
+
+  it('keeps a whole-account job when there are no slices', () => {
+    expect(
+      cashAllocations(
+        asset({ category: 'cash', name: 'ING', value: 5000, metadata: { job: 'emergency' } })
+      )
+    ).toMatchObject({ emergency: 5000, parked: 0, idle: 0 })
+  })
+})
+
+describe('buildCashPurpose', () => {
+  it('stores a single purpose as job, not slices', () => {
+    expect(buildCashPurpose(1000, 1000, 0)).toEqual({
+      job: 'emergency',
+      parkedReason: undefined,
+      slices: undefined,
+    })
+  })
+
+  it('stores a split as slices', () => {
+    expect(buildCashPurpose(1000, 200, 300, 'Juicio')).toEqual({
+      job: undefined,
+      parkedReason: undefined,
+      slices: [
+        { job: 'emergency', amount: 200 },
+        { job: 'parked', amount: 300, parkedReason: 'Juicio' },
+      ],
+    })
+  })
+})
+
+describe('formatCashJobsLine', () => {
+  it('names mixed uses', () => {
+    const line = formatCashJobsLine(
+      asset({
+        category: 'cash',
+        name: 'BBVA',
+        value: 100000,
+        metadata: {
+          slices: [
+            { job: 'emergency', amount: 24000 },
+            { job: 'parked', amount: 30000, parkedReason: 'Reforma' },
+          ],
+        },
+      })
+    )
+    expect(line).toContain('Colchón')
+    expect(line).toContain('Reforma')
+    expect(line).toContain('A invertir')
+  })
+})
+
 describe('largestIdleCash', () => {
   it('picks the biggest idle account', () => {
     const idle = largestIdleCash([
@@ -78,6 +155,29 @@ describe('largestIdleCash', () => {
 })
 
 describe('moneyBuckets', () => {
+  it('adds slices from the same account into exclusive totals', () => {
+    const b = moneyBuckets([
+      asset({
+        category: 'cash',
+        name: 'BBVA',
+        value: 10000,
+        metadata: {
+          slices: [
+            { job: 'emergency', amount: 3000 },
+            { job: 'parked', amount: 2000, parkedReason: 'Reforma' },
+          ],
+        },
+      }),
+    ])
+    expect(b).toMatchObject({
+      emergency: 3000,
+      parked: 2000,
+      idle: 5000,
+      toInvest: 5000,
+      emergencyAssumed: false,
+    })
+  })
+
   it('splits cash into exclusive jobs', () => {
     const b = moneyBuckets([
       asset({ category: 'cash', name: 'Colchón', value: 6000, metadata: { job: 'emergency' } }),

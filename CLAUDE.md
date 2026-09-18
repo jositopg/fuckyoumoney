@@ -58,7 +58,7 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - Importes UI en EUR, locale `es-ES` (`formatEur`).
 - Autonomía (legado) = `(líquido − deudas) / gastos mensuales`. Líquido = cash + stocks + crypto.
 - Colchón de emergencia = efectivo `job=emergency` (si nadie está tagged, el efectivo no aparcado). Nunca fondos ni cripto.
-- Efectivo: `emergency` (colchón, puede remunerar) | `parked` (apartado con motivo: reforma, juicio…) | el resto a fondos. TAE no es invertirlo.
+- Efectivo: una cuenta = un saldo de banco. Los usos son trozos: `emergency` (colchón) + `parked` (apartado con motivo) + resto `idle` (a fondos). `extra.slices` cuando hay más de un uso; si no, `job` en toda la cuenta. TAE no es invertirlo.
 - Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker. Sin ticker/ISIN no se identifica.
 - Inmuebles: valor **y** `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio. La app usa TS; SQL es para Grok (`npm run wealth`).

@@ -1,4 +1,5 @@
-import type { Asset, CashJob, CashMetadata, DebtMetadata, RealEstateMetadata } from '../types'
+import type { Asset, CashJob, CashMetadata, CashSlice, DebtMetadata, RealEstateMetadata } from '../types'
+import { CASH_JOB_LABELS } from '../types'
 import { formatEur, getTotalMonthlyDebtPayments, getTotalPositiveAssets } from './calculations'
 
 export const DEFAULT_EMERGENCY_MONTHS = 6
@@ -161,11 +162,108 @@ export interface WealthDiagnosis {
 
 const HABITUAL_STATUS = new Set(['vivienda_habitual', 'uso_propio'])
 
-export function cashJob(asset: Asset): CashJob {
+export interface CashAllocation {
+  emergency: number
+  parked: number
+  idle: number
+  parkedReason?: string
+}
+
+function normalizeJob(job?: string): CashJob {
+  if (job === 'parked' || job === 'emergency' || job === 'idle') return job
+  if (job === 'working') return 'idle'
+  return 'idle'
+}
+
+/** Bank balance split into jobs. Remainder after slices = a invertir. */
+export function cashAllocations(asset: Asset): CashAllocation {
+  if (asset.category !== 'cash') return { emergency: 0, parked: 0, idle: 0 }
   const m = asset.metadata as CashMetadata | undefined
-  if (m?.job === 'parked' || m?.job === 'emergency' || m?.job === 'idle') return m.job
-  // Legacy `working` (TAE without a purpose) is cash that should be invested.
-  if (m?.job === 'working') return 'idle'
+  const total = Math.max(0, asset.value)
+  const slices = m?.slices?.filter(s => s.amount > 0)
+  if (slices && slices.length > 0) {
+    let remaining = total
+    let emergency = 0
+    let parked = 0
+    let parkedReason: string | undefined
+    for (const s of slices) {
+      const job = normalizeJob(s.job)
+      if (job === 'idle') continue
+      const take = Math.min(Math.max(0, s.amount), remaining)
+      remaining -= take
+      if (job === 'emergency') emergency += take
+      else if (job === 'parked') {
+        parked += take
+        if (!parkedReason) parkedReason = s.parkedReason?.trim() || undefined
+      }
+    }
+    return { emergency, parked, idle: remaining, parkedReason }
+  }
+  const job = normalizeJob(m?.job)
+  if (job === 'emergency') return { emergency: total, parked: 0, idle: 0 }
+  if (job === 'parked') {
+    return {
+      emergency: 0,
+      parked: total,
+      idle: 0,
+      parkedReason: m?.parkedReason?.trim() || undefined,
+    }
+  }
+  return { emergency: 0, parked: 0, idle: total }
+}
+
+export function buildCashPurpose(
+  total: number,
+  emergency: number,
+  parked: number,
+  parkedReason?: string
+): Pick<CashMetadata, 'job' | 'parkedReason' | 'slices'> {
+  const e = Math.max(0, Math.min(emergency, total))
+  const p = Math.max(0, Math.min(parked, total - e))
+  const idle = Math.max(0, total - e - p)
+  const used = [e > 0, p > 0, idle > 0].filter(Boolean).length
+  const reason = parkedReason?.trim() || undefined
+  if (used <= 1) {
+    if (e > 0) return { job: 'emergency', parkedReason: undefined, slices: undefined }
+    if (p > 0) return { job: 'parked', parkedReason: reason, slices: undefined }
+    return { job: 'idle', parkedReason: undefined, slices: undefined }
+  }
+  const slices: CashSlice[] = []
+  if (e > 0) slices.push({ job: 'emergency', amount: e })
+  if (p > 0) slices.push({ job: 'parked', amount: p, parkedReason: reason })
+  return { job: undefined, parkedReason: undefined, slices }
+}
+
+export function formatCashJobsLine(asset: Asset): string | null {
+  const a = cashAllocations(asset)
+  if (a.emergency <= 0 && a.parked <= 0 && a.idle <= 0) return null
+  const mixed = [a.emergency > 0, a.parked > 0, a.idle > 0].filter(Boolean).length > 1
+  if (!mixed) {
+    if (a.emergency > 0) return CASH_JOB_LABELS.emergency
+    if (a.parked > 0) return a.parkedReason ? `Apartado · ${a.parkedReason}` : CASH_JOB_LABELS.parked
+    return CASH_JOB_LABELS.idle
+  }
+  const parts: string[] = []
+  if (a.emergency > 0) parts.push(`Colchón ${formatEur(a.emergency, true)}`)
+  if (a.parked > 0) {
+    parts.push(
+      a.parkedReason
+        ? `${a.parkedReason} ${formatEur(a.parked, true)}`
+        : `Apartado ${formatEur(a.parked, true)}`
+    )
+  }
+  if (a.idle > 0) parts.push(`A invertir ${formatEur(a.idle, true)}`)
+  return parts.join(' · ')
+}
+
+export function cashJob(asset: Asset): CashJob {
+  const a = cashAllocations(asset)
+  if (a.idle > 0 && a.emergency <= 0 && a.parked <= 0) return 'idle'
+  if (a.emergency > 0 && a.parked <= 0 && a.idle <= 0) return 'emergency'
+  if (a.parked > 0 && a.emergency <= 0 && a.idle <= 0) return 'parked'
+  if (a.idle > 0) return 'idle'
+  if (a.parked > 0) return 'parked'
+  if (a.emergency > 0) return 'emergency'
   return 'idle'
 }
 
@@ -175,10 +273,10 @@ export function moneyBuckets(assets: Asset[]): MoneyBuckets {
   let parked = 0
   let idle = 0
   for (const a of cash) {
-    const job = cashJob(a)
-    if (job === 'emergency') emergencyAssigned += a.value
-    else if (job === 'parked') parked += a.value
-    else idle += a.value
+    const alloc = cashAllocations(a)
+    emergencyAssigned += alloc.emergency
+    parked += alloc.parked
+    idle += alloc.idle
   }
   const unparked = emergencyAssigned + idle
   const emergencyAssumed = emergencyAssigned <= 0 && unparked > 0
@@ -196,9 +294,15 @@ export function moneyBuckets(assets: Asset[]): MoneyBuckets {
 
 export function largestIdleCash(assets: Asset[]): Asset | null {
   let best: Asset | null = null
+  let bestIdle = 0
   for (const a of assets) {
-    if (a.category !== 'cash' || cashJob(a) !== 'idle') continue
-    if (!best || a.value > best.value) best = a
+    if (a.category !== 'cash') continue
+    const idle = cashAllocations(a).idle
+    if (idle <= 0) continue
+    if (!best || idle > bestIdle) {
+      best = a
+      bestIdle = idle
+    }
   }
   return best
 }
@@ -206,9 +310,11 @@ export function largestIdleCash(assets: Asset[]): Asset | null {
 export function parkedSlices(assets: Asset[]): { reason: string; value: number }[] {
   const byReason = new Map<string, number>()
   for (const a of assets) {
-    if (a.category !== 'cash' || cashJob(a) !== 'parked') continue
-    const reason = (a.metadata as CashMetadata | undefined)?.parkedReason?.trim() || 'Sin motivo'
-    byReason.set(reason, (byReason.get(reason) ?? 0) + a.value)
+    if (a.category !== 'cash') continue
+    const alloc = cashAllocations(a)
+    if (alloc.parked <= 0) continue
+    const reason = alloc.parkedReason || 'Sin motivo'
+    byReason.set(reason, (byReason.get(reason) ?? 0) + alloc.parked)
   }
   return [...byReason.entries()]
     .map(([reason, value]) => ({ reason, value }))
@@ -295,9 +401,8 @@ function expensiveDebts(assets: Asset[]): Asset[] {
 export function parkedWithoutReason(assets: Asset[]): Asset[] {
   return assets.filter(a => {
     if (a.category !== 'cash') return false
-    if (cashJob(a) !== 'parked') return false
-    const reason = (a.metadata as CashMetadata | undefined)?.parkedReason?.trim()
-    return !reason
+    const alloc = cashAllocations(a)
+    return alloc.parked > 0 && !alloc.parkedReason
   })
 }
 

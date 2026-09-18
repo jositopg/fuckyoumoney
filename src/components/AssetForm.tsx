@@ -3,7 +3,6 @@ import { Trash2 } from 'lucide-react'
 import type {
   Asset,
   AssetCategory,
-  CashJob,
   CashMetadata,
   CryptoMetadata,
   DebtMetadata,
@@ -14,8 +13,6 @@ import type {
   StocksMetadata,
 } from '../types'
 import {
-  CASH_JOB_LABELS,
-  CASH_PURPOSE_JOBS,
   CATEGORY_LABELS,
   INVEST_CLASS_LABELS,
   INVEST_REGION_LABELS,
@@ -26,7 +23,9 @@ import {
 import { BottomSheet } from './BottomSheet'
 import { isISIN } from '../utils/priceUpdater'
 import { inferInvestment, looksLikeInvestment } from '../utils/inferInvestment'
-import { parseEur } from '../utils/declaredValue'
+import { formatEurInput, parseEur } from '../utils/declaredValue'
+import { buildCashPurpose, cashAllocations } from '../utils/moneyDiagnosis'
+import { formatEur } from '../utils/calculations'
 
 interface AssetFormProps {
   isOpen: boolean
@@ -65,7 +64,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
   const [debtType, setDebtType] = useState<NonNullable<DebtMetadata['debtType']>>('hipoteca')
   const [monthlyPayment, setMonthlyPayment] = useState('')
   const [interestRate, setInterestRate] = useState('')
-  const [cashJob, setCashJob] = useState<CashJob>('idle')
+  const [emergencyAmt, setEmergencyAmt] = useState('')
+  const [parkedAmt, setParkedAmt] = useState('')
   const [parkedReason, setParkedReason] = useState('')
   const [notes, setNotes] = useState('')
   const [showMore, setShowMore] = useState(false)
@@ -91,11 +91,10 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setMonthlyPayment(dm?.monthlyPayment != null ? String(dm.monthlyPayment) : '')
       const cm = editAsset.metadata as CashMetadata | DebtMetadata | undefined
       setInterestRate(cm?.interestRate != null ? String(cm.interestRate) : '')
-      const cashMeta = editAsset.metadata as CashMetadata | undefined
-      setCashJob(
-        cashMeta?.job === 'emergency' || cashMeta?.job === 'parked' ? cashMeta.job : 'idle'
-      )
-      setParkedReason(cashMeta?.parkedReason || '')
+      const cashAlloc = cashAllocations(editAsset)
+      setEmergencyAmt(cashAlloc.emergency > 0 ? formatEurInput(cashAlloc.emergency) : '')
+      setParkedAmt(cashAlloc.parked > 0 ? formatEurInput(cashAlloc.parked) : '')
+      setParkedReason(cashAlloc.parkedReason || '')
       const st = editAsset.metadata as StocksMetadata | PensionMetadata | undefined
       setStockKind(st && 'assetType' in st && st.assetType ? st.assetType : 'etf')
       setRegion(st && 'region' in st && st.region ? st.region : 'world')
@@ -117,7 +116,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setDebtType('hipoteca')
       setMonthlyPayment('')
       setInterestRate('')
-      setCashJob('idle')
+      setEmergencyAmt('')
+      setParkedAmt('')
       setParkedReason('')
       setStockKind('etf')
       setRegion('world')
@@ -149,9 +149,21 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       setError('Importe no válido')
       return
     }
-    if (kind === 'cash' && cashJob === 'parked' && !parkedReason.trim()) {
-      setError('Di el motivo del apartado (reforma, juicio, impuestos…)')
-      return
+    const emergency = emergencyAmt.trim() ? parseEur(emergencyAmt) : 0
+    const parked = parkedAmt.trim() ? parseEur(parkedAmt) : 0
+    if (kind === 'cash') {
+      if (Number.isNaN(emergency) || Number.isNaN(parked) || emergency < 0 || parked < 0) {
+        setError('Partes no válidas')
+        return
+      }
+      if (emergency + parked > v + 0.009) {
+        setError('Colchón y apartado no pueden sumar más que el saldo')
+        return
+      }
+      if (parked > 0 && !parkedReason.trim()) {
+        setError('Di el motivo del apartado (reforma, juicio, impuestos…)')
+        return
+      }
     }
     const guessed = inferInvestment(name, symbol, notes)
     let cat = category
@@ -167,9 +179,8 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       const prev = editAsset?.metadata as CashMetadata | undefined
       metadata = {
         ...prev,
-        job: cashJob,
         interestRate: rate,
-        parkedReason: cashJob === 'parked' ? parkedReason.trim() || undefined : undefined,
+        ...buildCashPurpose(v, emergency, parked, parkedReason),
       }
     } else if (cat === 'debt') {
       metadata = {
@@ -442,58 +453,85 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
           )}
 
           {kind === 'cash' && (
-            <div>
-              <p className="text-label font-medium text-on-surface/70 mb-2 font-body">Para qué es</p>
-              <div className="grid grid-cols-3 gap-2">
-                {CASH_PURPOSE_JOBS.map(job => (
-                  <button
-                    key={job}
-                    type="button"
-                    onClick={() => setCashJob(job)}
-                    className={`rounded-xl py-2.5 text-label font-body font-medium ${
-                      cashJob === job ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-on-surface/70'
-                    }`}
-                  >
-                    {CASH_JOB_LABELS[job]}
-                  </button>
-                ))}
-              </div>
-              <p className="text-label-sm text-on-surface/45 font-body mt-2 leading-relaxed">
-                {cashJob === 'emergency' &&
-                  'Vida. Puede estar en cuenta remunerada; eso no es invertirlo.'}
-                {cashJob === 'parked' &&
-                  'Un gasto concreto: reforma, juicio, impuestos, entrada… No es el colchón.'}
-                {cashJob === 'idle' && 'Sin motivo. Debería estar en fondos, no en cuenta.'}
+            <div className="space-y-4">
+              <p className="text-label font-medium text-on-surface/70 font-body">
+                Para qué es
               </p>
-              {cashJob === 'parked' && (
-                <div className="mt-2 space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {PARKED_REASON_PRESETS.map(preset => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setParkedReason(preset)}
-                        className={`rounded-lg px-3 py-1.5 text-label-sm font-body ${
-                          parkedReason === preset
-                            ? 'bg-primary text-on-primary'
-                            : 'bg-surface-container-highest text-on-surface/70'
-                        }`}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    value={parkedReason}
-                    onChange={e => setParkedReason(e.target.value)}
-                    placeholder="Motivo concreto"
-                    className={inputClass}
-                  />
-                </div>
-              )}
-              <div className="mt-3">
+              <p className="text-label-sm text-on-surface/45 font-body leading-relaxed -mt-2">
+                Una cuenta puede partirse. Lo que no asignes queda a invertir.
+              </p>
+              <div>
                 <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
-                  TAE % {cashJob === 'idle' ? '(no sustituye a invertirlo)' : '(opcional)'}
+                  Colchón €
+                </label>
+                <input
+                  inputMode="decimal"
+                  value={emergencyAmt}
+                  onChange={e => setEmergencyAmt(e.target.value)}
+                  placeholder="0 = nada"
+                  className={inputClass}
+                />
+                <p className="text-label-sm text-on-surface/40 font-body mt-1.5">
+                  Vida. Puede estar remunerado; eso no es invertirlo.
+                </p>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
+                  Apartado €
+                </label>
+                <input
+                  inputMode="decimal"
+                  value={parkedAmt}
+                  onChange={e => setParkedAmt(e.target.value)}
+                  placeholder="0 = nada"
+                  className={inputClass}
+                />
+                {(parkedAmt.trim() ? parseEur(parkedAmt) : 0) > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      {PARKED_REASON_PRESETS.map(preset => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setParkedReason(preset)}
+                          className={`rounded-lg px-3 py-1.5 text-label-sm font-body ${
+                            parkedReason === preset
+                              ? 'bg-primary text-on-primary'
+                              : 'bg-surface-container-highest text-on-surface/70'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      value={parkedReason}
+                      onChange={e => setParkedReason(e.target.value)}
+                      placeholder="Motivo concreto"
+                      className={inputClass}
+                    />
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-label font-medium text-on-surface/70 font-body">A invertir</p>
+                <p className="text-headline font-display font-semibold tabular-nums text-on-surface mt-1">
+                  {formatEur(
+                    Math.max(
+                      0,
+                      (parseEur(value) || 0) -
+                        Math.max(0, emergencyAmt.trim() ? parseEur(emergencyAmt) || 0 : 0) -
+                        Math.max(0, parkedAmt.trim() ? parseEur(parkedAmt) || 0 : 0)
+                    )
+                  )}
+                </p>
+                <p className="text-label-sm text-on-surface/40 font-body mt-1">
+                  El resto del saldo. Debería estar en fondos.
+                </p>
+              </div>
+              <div>
+                <label className="block text-label font-medium text-on-surface/70 mb-2 font-body">
+                  TAE % (opcional, no sustituye a invertirlo)
                 </label>
                 <input
                   inputMode="decimal"
