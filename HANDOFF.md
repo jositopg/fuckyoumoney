@@ -58,4 +58,4 @@ cd ~/Proyectos/fuck-you-money && npm run wealth
 
 - Snapshots mensuales aún en localStorage (el sparkline del hero no viaja de dispositivo).
 - `patrimonio_ia()` SQL sigue con umbral mixto 60% / 15% fondos; la app usa bandas landlord/financial. La portada manda; SQL es briefing.
-- Varias posiciones de fondos/acciones sin ticker → no hay foto de precio al abrir.
+- Los importes son declarados (sin banco ni precios al abrir). Jose confirma saldos de vez en cuando.

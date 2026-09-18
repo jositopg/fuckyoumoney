@@ -1,21 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { lazy, Suspense } from 'react'
 import { Plus, Settings } from 'lucide-react'
-import type { Asset, AppData, CommodityMetadata } from './types'
+import type { Asset, AppData } from './types'
 import { CATEGORY_ORDER, POSITION_GROUPS, isReadOnlyAsset } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
-import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
 import { NetWorthHero } from './components/NetWorthHero'
 import { WealthStatus } from './components/WealthStatus'
 import { CategorySection } from './components/CategorySection'
-import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
-import { updateAssetPrices, applyDailyInterest } from './utils/priceUpdater'
-import { applyPriceResult, assetsDiffer } from './utils/applyPrices'
 import { largestIdleCash, parkedWithoutReason } from './utils/moneyDiagnosis'
+import { isCashStale, setAssetValue } from './utils/declaredValue'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
@@ -36,6 +33,9 @@ import { replaceFincaAssets, syncFincaFromApi } from './lib/fincaSync'
 const AssetForm = lazy(() => import('./components/AssetForm').then(m => ({ default: m.AssetForm })))
 const SettingsSheet = lazy(() =>
   import('./components/SettingsSheet').then(m => ({ default: m.SettingsSheet }))
+)
+const UpdateValueSheet = lazy(() =>
+  import('./components/UpdateValueSheet').then(m => ({ default: m.UpdateValueSheet }))
 )
 
 
@@ -64,8 +64,8 @@ export default function App() {
   const [fincaBusy, setFincaBusy] = useState(false)
   const [fincaError, setFincaError] = useState<string | null>(null)
   const [fincaSyncedAt, setFincaSyncedAt] = useState<string | null>(null)
-  const isOnline = useOnlineStatus()
-  const [isUpdating, setIsUpdating] = useState(false)
+  const [valueIds, setValueIds] = useState<string[]>([])
+  const [valueIndex, setValueIndex] = useState(0)
   const persistenceStatus = usePersistentStorage()
   const auth = useAuth()
   const syncingRef = useRef(false)
@@ -140,76 +140,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.user?.id])
 
-  const persistChanged = useCallback(
-    async (changed: Asset[]) => {
-      if (!auth.user || changed.length === 0) return
-      const syncable = changed.filter(a => !isReadOnlyAsset(a))
-      if (syncable.length === 0) return
-      try {
-        await pushLocalAssetsToCloud(syncable, auth.user.id)
-      } catch {
-        // local remains the photo
-      }
-    },
-    [auth.user]
-  )
-
-  const refreshMarkets = useCallback(
-    async (assets: Asset[]) => {
-      const withInterest = applyDailyInterest(assets)
-      let next = withInterest
-      let priced = false
-
-      const updatable = next.filter(a => {
-        if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
-        if (a.category === 'commodities') {
-          const meta = a.metadata as CommodityMetadata | undefined
-          return !!meta?.commodityType && meta.commodityType !== 'otro'
-        }
-        return false
-      })
-
-      if (updatable.length > 0 && navigator.onLine) {
-        setIsUpdating(true)
-        try {
-          const maps = await updateAssetPrices(next)
-          const applied = applyPriceResult(next, maps)
-          next = applied.assets
-          priced = applied.changed.length > 0
-        } catch {
-          // Silent fail — use stored values
-        } finally {
-          setIsUpdating(false)
-        }
-      }
-
-      const changed = assetsDiffer(assets, next)
-      if (changed.length === 0 && !priced) {
-        setData(prev => takeSnapshot(prev))
-        return
-      }
-      setData(prev =>
-        takeSnapshot({
-          ...prev,
-          assets: next,
-          ...(priced ? { lastPriceUpdate: new Date().toISOString() } : {}),
-        })
-      )
-      await persistChanged(changed)
-    },
-    [persistChanged, setData]
-  )
-
   useEffect(() => {
     if (auth.loading) return
     if (auth.user && !cloudReady) return
-    void refreshMarkets(data.assets)
+    setData(prev => takeSnapshot(prev))
     if (!auth.user && data.assets.length > 0 && persistenceStatus !== 'granted') {
       const last = data.lastExportReminder ? new Date(data.lastExportReminder) : null
       const daysSinceLast = last ? (Date.now() - last.getTime()) / (1000 * 60 * 60 * 24) : Infinity
       if (daysSinceLast >= 30) setShowExportReminder(true)
     }
-    // After hydrate or when logged out. data.assets captured at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.loading, auth.user?.id, cloudReady])
 
@@ -222,14 +161,55 @@ export default function App() {
   )
 
   const hasAnyAssets = data.assets.length > 0
-  const hasSymbolAssets = data.assets.some(a => {
-    if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
-    if (a.category === 'commodities') {
-      const meta = a.metadata as CommodityMetadata | undefined
-      return !!meta?.commodityType && meta.commodityType !== 'otro'
+  const valueAsset =
+    valueIds.length > 0
+      ? (data.assets.find(a => a.id === valueIds[valueIndex]) ?? null)
+      : null
+
+  async function persistAsset(updated: Asset) {
+    if (isReadOnlyAsset(updated)) return
+    if (auth.user) {
+      try {
+        const saved = await updateCloudAsset(updated, auth.user.id)
+        setData(prev => ({
+          ...prev,
+          assets: prev.assets.map(a => (a.id === updated.id ? saved : a)),
+        }))
+        setSyncError(null)
+      } catch (err) {
+        setSyncError(formatCloudError(err))
+        setData(prev => ({
+          ...prev,
+          assets: prev.assets.map(a => (a.id === updated.id ? updated : a)),
+        }))
+      }
+    } else {
+      setData(prev => ({
+        ...prev,
+        assets: prev.assets.map(a => (a.id === updated.id ? updated : a)),
+      }))
     }
-    return false
-  })
+  }
+
+  function closeValueQueue() {
+    setValueIds([])
+    setValueIndex(0)
+  }
+
+  function advanceValueQueue() {
+    if (valueIndex + 1 >= valueIds.length) {
+      closeValueQueue()
+      return
+    }
+    setValueIndex(i => i + 1)
+  }
+
+  function openValueQueue(assets: Asset[]) {
+    const ids = assets.filter(a => !isReadOnlyAsset(a)).map(a => a.id)
+    if (ids.length === 0) return
+    setValueIds(ids)
+    setValueIndex(0)
+  }
 
   async function handleSaveAsset(assetData: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>) {
     const loggedIn = Boolean(auth.user)
@@ -246,27 +226,7 @@ export default function App() {
         return
       }
 
-      if (loggedIn && !isReadOnlyAsset(updated)) {
-        try {
-          const saved = await updateCloudAsset(updated, auth.user!.id)
-          setData(prev => ({
-            ...prev,
-            assets: prev.assets.map(a => (a.id === editAsset.id ? saved : a)),
-          }))
-          setSyncError(null)
-        } catch (err) {
-          setSyncError(formatCloudError(err))
-          setData(prev => ({
-            ...prev,
-            assets: prev.assets.map(a => (a.id === editAsset.id ? updated : a)),
-          }))
-        }
-      } else {
-        setData(prev => ({
-          ...prev,
-          assets: prev.assets.map(a => (a.id === editAsset.id ? updated : a)),
-        }))
-      }
+      await persistAsset(updated)
       setEditAsset(null)
       return
     }
@@ -382,12 +342,16 @@ export default function App() {
     return <OnboardingScreen onStart={handleOnboardingDone} />
   }
 
-  function openEdit(asset: Asset) {
-    setEditAsset(asset)
-  }
-
   function closeEdit() {
     setEditAsset(null)
+  }
+
+  function openPosition(asset: Asset) {
+    if (isReadOnlyAsset(asset)) {
+      setEditAsset(asset)
+      return
+    }
+    openValueQueue([asset])
   }
 
   return (
@@ -461,14 +425,6 @@ export default function App() {
           </div>
         )}
 
-        {hasSymbolAssets && (
-          <PriceUpdateBanner
-            lastUpdate={data.lastPriceUpdate}
-            isOnline={isOnline}
-            isUpdating={isUpdating}
-          />
-        )}
-
         {showExportReminder && !auth.user && (
           <ExportReminderBanner
             onExport={handleExportReminder}
@@ -490,14 +446,29 @@ export default function App() {
                     <p className="text-label-sm font-semibold text-on-surface/40 font-body uppercase tracking-wide mb-1">
                       {group.label}
                     </p>
-                    {group.categories.map(cat => (
-                      <CategorySection
-                        key={cat}
-                        category={cat}
-                        assets={assetsByCategory[cat]}
-                        onAssetClick={openEdit}
-                      />
-                    ))}
+                    {group.categories.map(cat => {
+                      const list = assetsByCategory[cat] ?? []
+                      const cashStale =
+                        cat === 'cash' ? list.filter(a => isCashStale(a)).length : 0
+                      return (
+                        <CategorySection
+                          key={cat}
+                          category={cat}
+                          assets={list}
+                          onAssetClick={openPosition}
+                          onReview={
+                            cat === 'cash' && list.some(a => !isReadOnlyAsset(a))
+                              ? () => openValueQueue(list)
+                              : undefined
+                          }
+                          hint={
+                            cashStale > 0
+                              ? `${cashStale} sin confirmar en 30 días`
+                              : undefined
+                          }
+                        />
+                      )
+                    })}
                   </div>
                 )
               })}
@@ -540,6 +511,25 @@ export default function App() {
           onSave={handleSaveAsset}
           onDelete={handleDeleteAsset}
           editAsset={editAsset}
+        />
+
+        <UpdateValueSheet
+          isOpen={valueIds.length > 0 && !!valueAsset}
+          asset={valueAsset}
+          step={valueIndex + 1}
+          total={valueIds.length}
+          onClose={closeValueQueue}
+          onConfirm={value => {
+            if (!valueAsset) return
+            void persistAsset(setAssetValue(valueAsset, value)).then(() => advanceValueQueue())
+          }}
+          onSkip={valueIds.length > 1 ? advanceValueQueue : undefined}
+          onEditDetails={() => {
+            if (!valueAsset) return
+            const target = valueAsset
+            closeValueQueue()
+            setEditAsset(target)
+          }}
         />
 
         <SettingsSheet

@@ -62,7 +62,8 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker. Sin ticker/ISIN no se identifica.
 - Inmuebles: valor **y** `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio. La app usa TS; SQL es para Grok (`npm run wealth`).
-- No hay tracker en tiempo real. Fondos = valor al abrir. Tras hidratar la nube se aplica interés + foto de precios y se sube lo cambiado. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
+- Foto **declarada**: los importes los pone Jose. No hay precios al abrir ni interés diario (el banco ya trae el TAE cuando copias el saldo). Tap en una posición editable = confirmar/cambiar el número; “Editar ficha” para el resto. Cuentas: “Saldos” recorre la lista. `updatedAt` es la fecha de la foto; cash ≥ 30 días se marca.
+- `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
 - Mezcla (`diagnosis.mix`): ladrillo alto no implica vender. Si el efectivo aguanta un parón de alquiler, equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.
 - Inmuebles Finca no se editan ni se borran desde el formulario; se regeneran en el sync. El sync es automático; error en portada; botón en Ajustes.
 - Preguntas del veredicto: gasto/colchón → Ajustes; idle/apartado sin motivo → editar esa cuenta. Un movimiento `deploy` abre el efectivo parado.

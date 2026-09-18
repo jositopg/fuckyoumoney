@@ -26,6 +26,7 @@ import {
 import { BottomSheet } from './BottomSheet'
 import { isISIN } from '../utils/priceUpdater'
 import { inferInvestment, looksLikeInvestment } from '../utils/inferInvestment'
+import { parseEur } from '../utils/declaredValue'
 
 interface AssetFormProps {
   isOpen: boolean
@@ -49,13 +50,6 @@ function kindFromCategory(cat: AssetCategory): Kind {
   if (cat === 'debt') return 'debt'
   if (cat === 'stocks' || cat === 'crypto' || cat === 'commodities' || cat === 'pension') return 'invest'
   return 'other'
-}
-
-function parseEur(raw: string): number {
-  const s = raw.trim().replace(/€/g, '').trim()
-  if (!s) return NaN
-  if (s.includes(',')) return Number(s.replace(/\./g, '').replace(',', '.'))
-  return Number(s)
 }
 
 const inputClass =

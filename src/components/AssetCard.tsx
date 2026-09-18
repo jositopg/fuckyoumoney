@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import type { Asset, AssetCategory, CashMetadata, StocksMetadata, CryptoMetadata, RealEstateMetadata, VehicleMetadata, PensionMetadata, DebtMetadata, CommodityMetadata } from '../types'
 import { INVEST_CLASS_LABELS, INVEST_REGION_LABELS, STOCK_KIND_LABELS } from '../types'
 import { formatEur } from '../utils/calculations'
+import { formatAsOf, isCashStale } from '../utils/declaredValue'
 
 interface AssetCardProps {
   asset: Asset
@@ -105,20 +106,12 @@ function getSecondaryLine(asset: Asset): string | null {
   }
 }
 
-function getPnlPercent(asset: Asset): number | null {
-  if (asset.category !== 'stocks' && asset.category !== 'crypto' && asset.category !== 'commodities') return null
-  const m = asset.metadata as StocksMetadata | CryptoMetadata | CommodityMetadata | undefined
-  if (!m) return null
-  const { pricePerUnit, purchasePrice } = m
-  if (!pricePerUnit || !purchasePrice || purchasePrice <= 0) return null
-  return ((pricePerUnit - purchasePrice) / purchasePrice) * 100
-}
-
 export function AssetCard({ asset, onClick }: AssetCardProps) {
   const isDebt = asset.category === 'debt'
   const displayValue = isDebt ? -Math.abs(asset.value) : asset.value
   const secondaryLine = getSecondaryLine(asset)
-  const pnl = getPnlPercent(asset)
+  const stale = isCashStale(asset)
+  const asOf = asset.source === 'finca' ? null : formatAsOf(asset.updatedAt)
 
   return (
     <button
@@ -148,9 +141,9 @@ export function AssetCard({ asset, onClick }: AssetCardProps) {
           <span className={`text-body font-semibold font-body tabular-nums ${isDebt ? 'text-error' : 'text-on-surface'}`}>
             {formatEur(displayValue)}
           </span>
-          {pnl !== null && (
-            <span className={`text-label-sm font-body tabular-nums ${pnl >= 0 ? 'text-primary' : 'text-error'}`}>
-              {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+          {asOf && (
+            <span className={`text-label-sm font-body ${stale ? 'text-error' : 'text-on-surface/40'}`}>
+              {asOf}
             </span>
           )}
         </div>

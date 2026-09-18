@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fym-v11-20260918'
+const CACHE_VERSION = 'fym-v12-20260918'
 const STATIC_ASSETS = [
   '/',
   '/index.html',

@@ -15,12 +15,12 @@ export function OnboardingScreen({ onStart }: OnboardingScreenProps) {
         Todo lo que tienes, en un número.
       </h1>
       <p className="text-body text-on-surface/60 font-body leading-relaxed mb-8">
-        Cuentas, fondos, deudas. Los inmuebles llegan solos desde Finca. El número, y qué hace cada euro.
+        Cuentas, fondos, deudas. Los inmuebles llegan solos desde Finca. Tú pones los importes; la foto no se mueve sola.
       </p>
       <ul className="space-y-3 text-label font-body text-on-surface/70 mb-12">
         <li>Di qué hace el efectivo: colchón, aparcado o a invertir.</li>
+        <li>Cuando mires el banco, actualiza el saldo. Si sigue igual, confírmalo.</li>
         <li>Los inmuebles muestran valor y neto de verdad, no solo el alquiler contratado.</li>
-        <li>La misma base la puede leer una IA y decir si estás bien o mal.</li>
       </ul>
       <button
         type="button"
