@@ -1,20 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { lazy, Suspense } from 'react'
 import { Plus, Settings } from 'lucide-react'
-import type { Asset, AppData, StocksMetadata, CryptoMetadata, CommodityMetadata } from './types'
-import { CATEGORY_ORDER, POSITION_GROUPS } from './types'
+import type { Asset, AppData, CommodityMetadata } from './types'
+import { CATEGORY_ORDER, POSITION_GROUPS, isReadOnlyAsset } from './types'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useOnlineStatus } from './hooks/useOnlineStatus'
 import { usePersistentStorage } from './hooks/usePersistentStorage'
 import { useAuth } from './hooks/useAuth'
 import { NetWorthHero } from './components/NetWorthHero'
 import { WealthStatus } from './components/WealthStatus'
-import { FincaSyncBanner } from './components/FincaSyncBanner'
 import { CategorySection } from './components/CategorySection'
 import { PriceUpdateBanner } from './components/PriceUpdateBanner'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
 import { updateAssetPrices, applyDailyInterest } from './utils/priceUpdater'
+import { applyPriceResult, assetsDiffer } from './utils/applyPrices'
+import { largestIdleCash, parkedWithoutReason } from './utils/moneyDiagnosis'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
@@ -36,9 +37,6 @@ const AssetForm = lazy(() => import('./components/AssetForm').then(m => ({ defau
 const SettingsSheet = lazy(() =>
   import('./components/SettingsSheet').then(m => ({ default: m.SettingsSheet }))
 )
-const InsightsSheet = lazy(() =>
-  import('./components/InsightsSheet').then(m => ({ default: m.InsightsSheet }))
-)
 
 
 const DEFAULT_DATA: AppData = {
@@ -59,7 +57,6 @@ export default function App() {
   const [data, setData] = useLocalStorage<AppData>('fym_data', DEFAULT_DATA, migrateData)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [isInsightsOpen, setIsInsightsOpen] = useState(false)
   const [editAsset, setEditAsset] = useState<Asset | null>(null)
   const [showExportReminder, setShowExportReminder] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
@@ -129,7 +126,7 @@ export default function App() {
       } catch (err) {
         if (!cancelled) {
           setSyncError(err instanceof Error ? err.message : 'Error al sincronizar')
-          setCloudReady(false)
+          setCloudReady(true)
         }
       } finally {
         syncingRef.current = false
@@ -143,10 +140,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.user?.id])
 
-  // Auto price update on mount (client-side only — never writes price_cache)
-  const runPriceUpdate = useCallback(
+  const persistChanged = useCallback(
+    async (changed: Asset[]) => {
+      if (!auth.user || changed.length === 0) return
+      const syncable = changed.filter(a => !isReadOnlyAsset(a))
+      if (syncable.length === 0) return
+      try {
+        await pushLocalAssetsToCloud(syncable, auth.user.id)
+      } catch {
+        // local remains the photo
+      }
+    },
+    [auth.user]
+  )
+
+  const refreshMarkets = useCallback(
     async (assets: Asset[]) => {
-      const updatableAssets = assets.filter(a => {
+      const withInterest = applyDailyInterest(assets)
+      let next = withInterest
+      let priced = false
+
+      const updatable = next.filter(a => {
         if (a.category === 'crypto' || a.category === 'stocks') return !!a.symbol
         if (a.category === 'commodities') {
           const meta = a.metadata as CommodityMetadata | undefined
@@ -154,66 +168,50 @@ export default function App() {
         }
         return false
       })
-      if (updatableAssets.length === 0) return
-      if (!navigator.onLine) return
 
-      setIsUpdating(true)
-      try {
-        const { values, resolvedTickers } = await updateAssetPrices(assets)
-        if (values.size === 0 && resolvedTickers.size === 0) return
-
-        setData(prev => ({
-          ...prev,
-          assets: prev.assets.map(a => {
-            const newValue = values.get(a.id)
-            const newResolvedTicker = resolvedTickers.get(a.id)
-            if (newValue === undefined && !newResolvedTicker) return a
-
-            let updatedMetadata = a.metadata
-            if (a.category === 'stocks' || a.category === 'crypto' || a.category === 'commodities') {
-              const meta = a.metadata as StocksMetadata | CryptoMetadata | CommodityMetadata | undefined
-              const quantity = meta?.quantity
-              const newPricePerUnit =
-                quantity && quantity > 0 && newValue !== undefined ? newValue / quantity : undefined
-              updatedMetadata = {
-                ...meta,
-                ...(newPricePerUnit !== undefined && { pricePerUnit: newPricePerUnit }),
-                ...(newResolvedTicker && { resolvedTicker: newResolvedTicker }),
-              }
-            }
-
-            return {
-              ...a,
-              ...(newValue !== undefined && { value: newValue }),
-              metadata: updatedMetadata,
-              updatedAt: new Date().toISOString(),
-            }
-          }),
-          lastPriceUpdate: new Date().toISOString(),
-        }))
-      } catch {
-        // Silent fail — use stored values
-      } finally {
-        setIsUpdating(false)
+      if (updatable.length > 0 && navigator.onLine) {
+        setIsUpdating(true)
+        try {
+          const maps = await updateAssetPrices(next)
+          const applied = applyPriceResult(next, maps)
+          next = applied.assets
+          priced = applied.changed.length > 0
+        } catch {
+          // Silent fail — use stored values
+        } finally {
+          setIsUpdating(false)
+        }
       }
+
+      const changed = assetsDiffer(assets, next)
+      if (changed.length === 0 && !priced) {
+        setData(prev => takeSnapshot(prev))
+        return
+      }
+      setData(prev =>
+        takeSnapshot({
+          ...prev,
+          assets: next,
+          ...(priced ? { lastPriceUpdate: new Date().toISOString() } : {}),
+        })
+      )
+      await persistChanged(changed)
     },
-    [setData]
+    [persistChanged, setData]
   )
 
   useEffect(() => {
-    setData(prev => {
-      const updatedAssets = applyDailyInterest(prev.assets)
-      return updatedAssets === prev.assets ? prev : { ...prev, assets: updatedAssets }
-    })
-    runPriceUpdate(data.assets)
-    setData(prev => takeSnapshot(prev))
-    if (data.assets.length > 0 && persistenceStatus !== 'granted') {
+    if (auth.loading) return
+    if (auth.user && !cloudReady) return
+    void refreshMarkets(data.assets)
+    if (!auth.user && data.assets.length > 0 && persistenceStatus !== 'granted') {
       const last = data.lastExportReminder ? new Date(data.lastExportReminder) : null
       const daysSinceLast = last ? (Date.now() - last.getTime()) / (1000 * 60 * 60 * 24) : Infinity
       if (daysSinceLast >= 30) setShowExportReminder(true)
     }
+    // After hydrate or when logged out. data.assets captured at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []) // Only on mount
+  }, [auth.loading, auth.user?.id, cloudReady])
 
   const assetsByCategory = CATEGORY_ORDER.reduce(
     (acc, cat) => {
@@ -243,12 +241,12 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       }
 
-      if (editAsset.readOnly || editAsset.source === 'finca') {
+      if (isReadOnlyAsset(editAsset)) {
         setEditAsset(null)
         return
       }
 
-      if (loggedIn && !updated.readOnly) {
+      if (loggedIn && !isReadOnlyAsset(updated)) {
         try {
           const saved = await updateCloudAsset(updated, auth.user!.id)
           setData(prev => ({
@@ -301,7 +299,7 @@ export default function App() {
     const target = editAsset
     const loggedIn = Boolean(auth.user)
 
-    if (target.readOnly || target.source === 'finca') {
+    if (isReadOnlyAsset(target)) {
       setEditAsset(null)
       return
     }
@@ -312,6 +310,7 @@ export default function App() {
         setSyncError(null)
       } catch (err) {
         setSyncError(formatCloudError(err))
+        return
       }
     }
 
@@ -423,19 +422,43 @@ export default function App() {
             monthlyExpenses={data.monthlyExpenses}
             emergencyTargetMonths={data.emergencyTargetMonths}
             onAsk={q => {
-              if (q.id === 'expenses' || q.id === 'emergency_target') setIsSettingsOpen(true)
+              if (q.id === 'expenses' || q.id === 'emergency_target') {
+                setIsSettingsOpen(true)
+                return
+              }
+              if (q.id === 'parked_reason') {
+                const parked = parkedWithoutReason(data.assets)[0]
+                if (parked) setEditAsset(parked)
+                return
+              }
+              const idle = largestIdleCash(data.assets)
+              if (idle) setEditAsset(idle)
+            }}
+            onMove={m => {
+              if (m.stance === 'deploy' || m.stance === 'classify') {
+                const idle = largestIdleCash(data.assets)
+                if (idle) setEditAsset(idle)
+              }
+            }}
+            onIdleCash={() => {
+              const idle = largestIdleCash(data.assets)
+              if (idle) setEditAsset(idle)
             }}
           />
         )}
 
-        {auth.user && (
-          <FincaSyncBanner
-            lastSync={fincaSyncedAt}
-            busy={fincaBusy}
-            error={fincaError}
-            propertyCount={data.assets.filter(a => a.source === 'finca').length}
-            onSync={() => void handleSyncFinca()}
-          />
+        {fincaError && (
+          <div className="mb-3 rounded-xl bg-error/10 text-error px-4 py-3 text-label font-body flex items-center justify-between gap-3">
+            <span>Finca: {fincaError}</span>
+            <button
+              type="button"
+              onClick={() => void handleSyncFinca()}
+              disabled={fincaBusy}
+              className="flex-shrink-0 text-label font-medium underline disabled:opacity-50"
+            >
+              Reintentar
+            </button>
+          </div>
         )}
 
         {hasSymbolAssets && (
@@ -455,30 +478,28 @@ export default function App() {
 
         {hasAnyAssets ? (
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide">
-                Posiciones
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsInsightsOpen(true)}
-                className="text-label-sm text-primary font-body font-medium"
-              >
-                Indicadores
-              </button>
-            </div>
-            <div className="space-y-4">
+            <h2 className="text-label font-semibold text-on-surface/50 font-body uppercase tracking-wide mb-3">
+              Posiciones
+            </h2>
+            <div className="space-y-6">
               {POSITION_GROUPS.map(group => {
                 const groupAssets = group.categories.flatMap(cat => assetsByCategory[cat] ?? [])
                 if (groupAssets.length === 0) return null
-                return group.categories.map(cat => (
-                  <CategorySection
-                    key={cat}
-                    category={cat}
-                    assets={assetsByCategory[cat]}
-                    onAssetClick={openEdit}
-                  />
-                ))
+                return (
+                  <div key={group.id}>
+                    <p className="text-label-sm font-semibold text-on-surface/40 font-body uppercase tracking-wide mb-1">
+                      {group.label}
+                    </p>
+                    {group.categories.map(cat => (
+                      <CategorySection
+                        key={cat}
+                        category={cat}
+                        assets={assetsByCategory[cat]}
+                        onAssetClick={openEdit}
+                      />
+                    ))}
+                  </div>
+                )
               })}
             </div>
           </div>
@@ -530,14 +551,17 @@ export default function App() {
           data={data}
           setData={setData}
           auth={auth}
-        />
-
-        <InsightsSheet
-          isOpen={isInsightsOpen}
-          onClose={() => setIsInsightsOpen(false)}
-          assets={data.assets}
-          monthlyExpenses={data.monthlyExpenses}
-          snapshots={data.snapshots}
+          finca={
+            auth.user
+              ? {
+                  lastSync: fincaSyncedAt,
+                  busy: fincaBusy,
+                  error: fincaError,
+                  propertyCount: data.assets.filter(a => a.source === 'finca').length,
+                  onSync: () => void handleSyncFinca(),
+                }
+              : undefined
+          }
         />
       </Suspense>
     </div>

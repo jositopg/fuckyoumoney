@@ -8,11 +8,7 @@ import {
   getTotalDebts,
   getTotalPositiveAssets,
   getAutonomyMonths,
-  getEmergencyFundMonths,
   getDebtRatio,
-  getAutonomyLevel,
-  getContextualMessage,
-  getDiversificationWarning,
 } from '../calculations'
 
 // --- Test helpers ---
@@ -268,29 +264,6 @@ describe('getAutonomyMonths', () => {
   })
 })
 
-// --- getEmergencyFundMonths ---
-describe('getEmergencyFundMonths', () => {
-  it('returns Infinity when expenses is 0', () => {
-    expect(getEmergencyFundMonths([], 0)).toBe(Infinity)
-  })
-
-  it('returns liquid / expenses', () => {
-    const assets = [
-      makeAsset({ category: 'cash', value: 6000 }),
-      makeAsset({ category: 'stocks', value: 3000 }),
-    ]
-    expect(getEmergencyFundMonths(assets, 3000)).toBe(3)
-  })
-
-  it('does not subtract debts (pure liquid coverage)', () => {
-    const assets = [
-      makeAsset({ category: 'cash', value: 6000 }),
-      makeAsset({ category: 'debt', value: 3000 }),
-    ]
-    expect(getEmergencyFundMonths(assets, 1000)).toBe(6)
-  })
-})
-
 // --- getDebtRatio ---
 describe('getDebtRatio', () => {
   it('returns 0 when there are no positive assets', () => {
@@ -313,156 +286,5 @@ describe('getDebtRatio', () => {
   it('returns 0 when no debt', () => {
     const assets = [makeAsset({ category: 'cash', value: 5000 })]
     expect(getDebtRatio(assets)).toBe(0)
-  })
-})
-
-// --- getAutonomyLevel ---
-describe('getAutonomyLevel', () => {
-  it('handles negative months', () => {
-    const level = getAutonomyLevel(-1)
-    expect(level.label).toBe('Tu punto de partida')
-  })
-
-  it('handles Infinity', () => {
-    const level = getAutonomyLevel(Infinity)
-    expect(level.label).toBe('Tu punto de partida')
-  })
-
-  it('handles 0 months (treated as < 3, building base)', () => {
-    const level = getAutonomyLevel(0)
-    expect(level.label).toBe('Estás construyendo tu base')
-  })
-
-  it('returns building label for < 3 months (e.g. 1)', () => {
-    const level = getAutonomyLevel(1)
-    expect(level.label).toBe('Estás construyendo tu base')
-  })
-
-  it('returns solid cushion for 3-5 months', () => {
-    const level = getAutonomyLevel(4)
-    expect(level.label).toBe('Tienes un colchón sólido')
-  })
-
-  it('returns real margin for 6-11 months', () => {
-    const level = getAutonomyLevel(8)
-    expect(level.label).toBe('Tienes margen real')
-  })
-
-  it('returns autonomy for 12-23 months', () => {
-    const level = getAutonomyLevel(18)
-    expect(level.label).toBe('Tienes autonomía')
-  })
-
-  it('returns freedom for 24+ months', () => {
-    const level = getAutonomyLevel(24)
-    expect(level.label).toBe('Tienes libertad')
-  })
-
-  it('returns freedom for exactly 36 months', () => {
-    const level = getAutonomyLevel(36)
-    expect(level.label).toBe('Tienes libertad')
-  })
-})
-
-// --- getContextualMessage ---
-describe('getContextualMessage', () => {
-  it('returns starting point message when netWorth=0 and months<=0', () => {
-    const msg = getContextualMessage(0, 0, 0)
-    expect(msg).toContain('punto de partida')
-  })
-
-  it('returns debt message when debtRatio > 0.5', () => {
-    const msg = getContextualMessage(12, 10000, 0.6)
-    expect(msg).toContain('deuda')
-  })
-
-  it('returns message for months < 1 (not starting point)', () => {
-    const msg = getContextualMessage(0.5, 500, 0)
-    expect(msg).toContain('opciones')
-  })
-
-  it('returns message for months < 3', () => {
-    const msg = getContextualMessage(2, 2000, 0)
-    expect(msg).toContain('no')
-  })
-
-  it('returns cushion message for months < 6', () => {
-    const msg = getContextualMessage(4, 4000, 0)
-    expect(msg).toContain('colchón')
-  })
-
-  it('returns margin message for months < 12', () => {
-    const msg = getContextualMessage(8, 8000, 0)
-    expect(msg).toContain('margen')
-  })
-
-  it('returns autonomy message for months < 24', () => {
-    const msg = getContextualMessage(18, 18000, 0)
-    expect(msg).toContain('autonomía')
-  })
-
-  it('returns freedom message for months >= 24', () => {
-    const msg = getContextualMessage(30, 30000, 0)
-    expect(msg).toContain('libertad')
-  })
-})
-
-// --- getDiversificationWarning ---
-describe('getDiversificationWarning', () => {
-  it('returns null for empty assets', () => {
-    expect(getDiversificationWarning([])).toBeNull()
-  })
-
-  it('returns null when no category > 70%', () => {
-    const assets = [
-      makeAsset({ category: 'cash', value: 3000 }),
-      makeAsset({ category: 'stocks', value: 4000 }),
-      makeAsset({ category: 'crypto', value: 3000 }),
-    ]
-    expect(getDiversificationWarning(assets)).toBeNull()
-  })
-
-  it('returns warning when one category > 70%', () => {
-    const assets = [
-      makeAsset({ category: 'cash', value: 8000 }),
-      makeAsset({ category: 'stocks', value: 2000 }),
-    ]
-    const warning = getDiversificationWarning(assets)
-    expect(warning).not.toBeNull()
-    expect(warning).toContain('efectivo')
-  })
-
-  it('returns warning for crypto concentration', () => {
-    const assets = [
-      makeAsset({ category: 'crypto', value: 9000 }),
-      makeAsset({ category: 'cash', value: 1000 }),
-    ]
-    const warning = getDiversificationWarning(assets)
-    expect(warning).toContain('cripto')
-  })
-
-  it('ignores debt in diversification calculation', () => {
-    const assets = [
-      makeAsset({ category: 'cash', value: 3000 }),
-      makeAsset({ category: 'stocks', value: 4000 }),
-      makeAsset({ category: 'debt', value: 100000 }),
-    ]
-    // Debt should not count as a category or affect the denominator
-    expect(getDiversificationWarning(assets)).toBeNull()
-  })
-
-  it('returns null when total positive is 0', () => {
-    const assets = [makeAsset({ category: 'debt', value: 5000 })]
-    expect(getDiversificationWarning(assets)).toBeNull()
-  })
-
-  it('returns warning for exactly 71% concentration', () => {
-    const assets = [
-      makeAsset({ category: 'real_estate', value: 71000 }),
-      makeAsset({ category: 'cash', value: 29000 }),
-    ]
-    const warning = getDiversificationWarning(assets)
-    expect(warning).not.toBeNull()
-    expect(warning).toContain('inmuebles')
   })
 })

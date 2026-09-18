@@ -1,6 +1,6 @@
 # HANDOFF — fuckyoumoney wealth OS
 
-**Fecha:** 2026-09-08  
+**Fecha:** 2026-09-18  
 **Rama:** `main`  
 **Repos:** `~/Proyectos/fuck-you-money` → `jositopg/fuckyoumoney`  
 **Finca:** `~/Proyectos/finca` → `jositopg/finca`
@@ -41,9 +41,10 @@
 - [x] Migración `001_wealth_os.sql` autoexplicativa (`ai_guide`, `patrimonio_ia()`, vistas, comentarios)
 - [x] `~/.fuckyoumoney-db.env` + `001_wealth_os.sql` aplicado (`ai_guide`, vistas, tablas)
 - [x] Efectivo con job + colchón en meses + neto inmobiliario + diagnosis en `patrimonio_ia()` (2026-09-08)
-- [x] FYM ya tiene posiciones (neto ~2.03M, 20 inmuebles, ~492k efectivo sin job)
-- [ ] Jose: gasto mensual + meses de colchón en Ajustes
-- [ ] Jose: marcar cada cuenta (emergencia / aparcado / rinde / parado)
+- [x] FYM ya tiene posiciones (neto ~4.49M, 23 inmuebles con valor, gasto y jobs rellenos)
+- [x] Jose: gasto mensual + meses de colchón en Ajustes (2000 € / 12 meses)
+- [x] Jose: marcar cada cuenta (emergencia / aparcado / a invertir)
+- [x] Recorte de producto 2026-09-18: sin Insights/filosofía/autonomía-UI; Finca fuera de la portada; preguntas accionables; precios se persisten; SQL mix sin cola decimal
 
 ## Cómo consultar el patrimonio
 
@@ -55,7 +56,6 @@ cd ~/Proyectos/fuck-you-money && npm run wealth
 
 ## Huecos
 
-- Gasto mensual y meses de colchón aún no dichos → verdict `unknown`.
-- ~492k € de efectivo sin job (la app lo trata como parado).
-- 8/20 inmuebles sin valor de mercado. 4 vacíos.
-- Snapshots mensuales aún en localStorage.
+- Snapshots mensuales aún en localStorage (el sparkline del hero no viaja de dispositivo).
+- `patrimonio_ia()` SQL sigue con umbral mixto 60% / 15% fondos; la app usa bandas landlord/financial. La portada manda; SQL es briefing.
+- Varias posiciones de fondos/acciones sin ticker → no hay foto de precio al abrir.

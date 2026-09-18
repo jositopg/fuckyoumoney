@@ -194,6 +194,15 @@ export function moneyBuckets(assets: Asset[]): MoneyBuckets {
   }
 }
 
+export function largestIdleCash(assets: Asset[]): Asset | null {
+  let best: Asset | null = null
+  for (const a of assets) {
+    if (a.category !== 'cash' || cashJob(a) !== 'idle') continue
+    if (!best || a.value > best.value) best = a
+  }
+  return best
+}
+
 export function parkedSlices(assets: Asset[]): { reason: string; value: number }[] {
   const byReason = new Map<string, number>()
   for (const a of assets) {
@@ -283,7 +292,7 @@ function expensiveDebts(assets: Asset[]): Asset[] {
   })
 }
 
-function parkedWithoutReason(assets: Asset[]): Asset[] {
+export function parkedWithoutReason(assets: Asset[]): Asset[] {
   return assets.filter(a => {
     if (a.category !== 'cash') return false
     if (cashJob(a) !== 'parked') return false

@@ -18,7 +18,7 @@ export function OnboardingScreen({ onStart }: OnboardingScreenProps) {
         Cuentas, fondos, deudas. Los inmuebles llegan solos desde Finca. El número, y qué hace cada euro.
       </p>
       <ul className="space-y-3 text-label font-body text-on-surface/70 mb-12">
-        <li>Di qué hace el efectivo: colchón, aparcado, rinde o parado.</li>
+        <li>Di qué hace el efectivo: colchón, aparcado o a invertir.</li>
         <li>Los inmuebles muestran valor y neto de verdad, no solo el alquiler contratado.</li>
         <li>La misma base la puede leer una IA y decir si estás bien o mal.</li>
       </ul>

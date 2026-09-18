@@ -19,11 +19,12 @@ function Donut({ sleeves }: { sleeves: MixSleeve[] }) {
   const slices = sleeves.filter(s => s.currentPct > 0)
   const r = 16
   const c = 2 * Math.PI * r
-  let offset = 0
-  const parts = slices.map(s => {
-    const len = (s.currentPct / 100) * c
+  const lens = slices.map(s => (s.currentPct / 100) * c)
+  const offsets = lens.map((_, i) => lens.slice(0, i).reduce((sum, n) => sum + n, 0))
+  const parts = slices.map((s, i) => {
+    const len = lens[i]
     const dash = `${len} ${c - len}`
-    const el = (
+    return (
       <circle
         key={s.id}
         cx="20"
@@ -33,12 +34,10 @@ function Donut({ sleeves }: { sleeves: MixSleeve[] }) {
         stroke={SLEEVE_COLOR[s.id]}
         strokeWidth="6"
         strokeDasharray={dash}
-        strokeDashoffset={-offset}
+        strokeDashoffset={-offsets[i]}
         transform="rotate(-90 20 20)"
       />
     )
-    offset += len
-    return el
   })
 
   return (
@@ -145,9 +144,4 @@ export function MixPanel({ mix }: { mix: MixAnalysis }) {
       )}
     </section>
   )
-}
-
-/** @deprecated cover uses MixPanel; kept for any leftover import */
-export function AllocationPanel({ mix }: { mix: MixAnalysis }) {
-  return <MixPanel mix={mix} />
 }

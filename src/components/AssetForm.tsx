@@ -21,6 +21,7 @@ import {
   INVEST_REGION_LABELS,
   PARKED_REASON_PRESETS,
   STOCK_KIND_LABELS,
+  isReadOnlyAsset,
 } from '../types'
 import { BottomSheet } from './BottomSheet'
 import { isISIN } from '../utils/priceUpdater'
@@ -144,7 +145,7 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (editAsset?.readOnly) return
+    if (editAsset && isReadOnlyAsset(editAsset)) return
     const v = parseEur(value)
     if (!name.trim()) {
       setError('Ponle un nombre')
@@ -216,12 +217,12 @@ export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: Asse
       notes: notes.trim() || undefined,
       metadata,
       source: editAsset?.source ?? 'manual',
-      readOnly: false,
+      readOnly: editAsset ? isReadOnlyAsset(editAsset) : false,
     })
     onClose()
   }
 
-  const readOnly = Boolean(editAsset?.readOnly)
+  const readOnly = Boolean(editAsset && isReadOnlyAsset(editAsset))
 
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} title={editAsset ? 'Editar' : 'Añadir'}>

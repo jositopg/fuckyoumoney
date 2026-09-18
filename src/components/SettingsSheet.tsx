@@ -16,6 +16,13 @@ interface SettingsSheetProps {
   data: AppData
   setData: (value: AppData | ((prev: AppData) => AppData)) => void
   auth: AuthState
+  finca?: {
+    lastSync: string | null
+    busy: boolean
+    error: string | null
+    propertyCount: number
+    onSync: () => void
+  }
 }
 
 export function SettingsSheet({
@@ -27,6 +34,7 @@ export function SettingsSheet({
   data,
   setData,
   auth,
+  finca,
 }: SettingsSheetProps) {
   const [value, setValue] = useState('')
   const [months, setMonths] = useState('')
@@ -201,10 +209,31 @@ export function SettingsSheet({
                 {auth.user.email}
               </p>
               <p className="text-label-sm text-primary font-body mt-2">
-                Activos y deudas se sincronizan con Supabase. Los inmuebles se quedan solo en este
-                dispositivo (Finca gestiona alquileres).
+                Cuentas, fondos, deudas e inmuebles (vía Finca) viven en tu cuenta. Finca sigue
+                siendo el sitio donde se gestionan los pisos.
               </p>
             </div>
+            {finca && (
+              <div className="bg-surface-container-low rounded-xl px-4 py-3">
+                <p className="text-label font-medium text-on-surface/80 font-body">Inmuebles de Finca</p>
+                <p className="text-label-sm text-on-surface/50 font-body mt-0.5">
+                  {finca.error
+                    ? finca.error
+                    : finca.propertyCount > 0
+                      ? `${finca.propertyCount} propiedades · solo lectura`
+                      : 'Aún no sincronizado'}
+                </p>
+                <button
+                  type="button"
+                  onClick={finca.onSync}
+                  disabled={finca.busy}
+                  className="mt-3 w-full bg-surface-container-highest text-on-surface rounded-xl py-2.5
+                    font-body font-medium text-label disabled:opacity-50"
+                >
+                  {finca.busy ? 'Sincronizando…' : 'Sincronizar ahora'}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => void auth.signOut()}
@@ -218,7 +247,8 @@ export function SettingsSheet({
         ) : (
           <form onSubmit={handleAuthSubmit} className="space-y-3">
             <p className="text-label text-on-surface/60 font-body leading-relaxed mb-1">
-              Inicia sesión para sincronizar tu patrimonio entre dispositivos (excepto inmuebles).
+              Inicia sesión para sincronizar el patrimonio entre dispositivos. Los inmuebles llegan
+              de Finca.
             </p>
             <div className="flex gap-2 mb-1">
               <button
@@ -372,11 +402,10 @@ export function SettingsSheet({
             </span>
             <p className="text-label text-on-surface/70 font-body leading-relaxed">
               <span className="font-semibold text-on-surface">
-                Con sesión iniciada, tus datos pueden sincronizarse con Supabase.
+                Con sesión, el inventario vive en tu cuenta de Supabase.
               </span>{' '}
-              Activos y deudas se guardan en tu cuenta (proyecto Mi Patrimonio). Sin sesión, todo
-              permanece solo en este dispositivo. Los inmuebles no se suben a la nube por defecto
-              (Finca gestiona alquileres).
+              Sin sesión, todo queda en este dispositivo. Los inmuebles se copian desde Finca
+              (solo lectura aquí).
             </p>
           </div>
 
@@ -426,7 +455,7 @@ export function SettingsSheet({
                 <li className="flex items-start gap-2">
                   <span className="text-error mt-0.5 text-xs">✗</span>
                   <span className="text-label-sm text-on-surface/60 font-body">
-                    Los inmuebles no se sincronizan con Supabase (quedan solo en local)
+                    Los inmuebles no se editan aquí: se regeneran al sincronizar Finca
                   </span>
                 </li>
               </ul>

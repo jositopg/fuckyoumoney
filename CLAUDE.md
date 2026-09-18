@@ -2,7 +2,7 @@
 
 > Actualiza este archivo en el mismo commit si cambia el modelo de datos, una vista, una convención o una limitación. Foto del estado actual, no diario.
 
-App personal de Jose para **anotar y ver su patrimonio**: un número (neto), asignación, lista de posiciones. **No gestiona** inmuebles (eso es Finca). Sin chat IA, sin pedagogía de libro. Uso exclusivo, datos reales.
+App personal de Jose para **anotar y ver su patrimonio**: un número (neto), veredicto, mezcla, efectivo con job, inmuebles, posiciones. **No gestiona** inmuebles (eso es Finca). Sin chat IA, sin pedagogía de libro, sin pantalla de “indicadores” paralela. Uso exclusivo, datos reales.
 
 Repo `jositopg/fuckyoumoney`, Vercel: `https://fuckyoumoney.vercel.app`.  
 Handoff: `HANDOFF.md`. Schema para Grok: `supabase/README.md`.
@@ -61,11 +61,12 @@ Cloud: tablas `assets` + `liabilities`. Metadata extra en `notes` como `FYM1:{..
 - Efectivo: `emergency` (colchón, puede remunerar) | `parked` (apartado con motivo: reforma, juicio…) | el resto a fondos. TAE no es invertirlo.
 - Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker. Sin ticker/ISIN no se identifica.
 - Inmuebles: valor **y** `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
-- Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio.
-- No hay tracker en tiempo real. Fondos = valor al abrir. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
+- Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio. La app usa TS; SQL es para Grok (`npm run wealth`).
+- No hay tracker en tiempo real. Fondos = valor al abrir. Tras hidratar la nube se aplica interés + foto de precios y se sube lo cambiado. `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
 - Mezcla (`diagnosis.mix`): ladrillo alto no implica vender. Si el efectivo aguanta un parón de alquiler, equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.
-- Inmuebles Finca no se editan ni se borran desde el formulario; se regeneran en el sync.
-- Al cargar, nube y local se fusionan (`updatedAt`); lo local más nuevo o solo-local se sube. Un deploy no puede borrar inversiones.
+- Inmuebles Finca no se editan ni se borran desde el formulario; se regeneran en el sync. El sync es automático; error en portada; botón en Ajustes.
+- Preguntas del veredicto: gasto/colchón → Ajustes; idle/apartado sin motivo → editar esa cuenta. Un movimiento `deploy` abre el efectivo parado.
+- Al cargar, nube y local se fusionan (`updatedAt`); lo local más nuevo o solo-local se sube. Un deploy no puede borrar inversiones. Si falla el delete en nube, no se borra en local.
 - Tras cada commit: `git push`. Merge a `main` solo con build+test verdes.
 
 ## Limitaciones

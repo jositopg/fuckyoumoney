@@ -4,6 +4,7 @@ import {
   cashJob,
   deployableCash,
   diagnoseWealth,
+  largestIdleCash,
   moneyBuckets,
   realEstateYield,
 } from '../moneyDiagnosis'
@@ -54,6 +55,25 @@ describe('cashJob', () => {
         })
       )
     ).toBe('parked')
+  })
+})
+
+describe('largestIdleCash', () => {
+  it('picks the biggest idle account', () => {
+    const idle = largestIdleCash([
+      asset({ category: 'cash', name: 'Small', value: 100, metadata: { job: 'idle' } }),
+      asset({ category: 'cash', name: 'Big', value: 900, metadata: { job: 'idle' } }),
+      asset({ category: 'cash', name: 'Cushion', value: 5000, metadata: { job: 'emergency' } }),
+    ])
+    expect(idle?.name).toBe('Big')
+  })
+
+  it('returns null when nothing is idle', () => {
+    expect(
+      largestIdleCash([
+        asset({ category: 'cash', name: 'Cushion', value: 100, metadata: { job: 'emergency' } }),
+      ])
+    ).toBeNull()
   })
 })
 

@@ -14,6 +14,8 @@ interface WealthStatusProps {
   monthlyExpenses: number
   emergencyTargetMonths?: number
   onAsk?: (question: DiagnosisQuestion) => void
+  onMove?: (move: CapitalMove) => void
+  onIdleCash?: () => void
 }
 
 const VERDICT_TONE: Record<string, string> = {
@@ -35,6 +37,8 @@ export function WealthStatus({
   monthlyExpenses,
   emergencyTargetMonths,
   onAsk,
+  onMove,
+  onIdleCash,
 }: WealthStatusProps) {
   if (assets.length === 0) return null
 
@@ -82,7 +86,7 @@ export function WealthStatus({
           </h3>
           <ul className="divide-y divide-surface-container-low">
             {d.moves.map(m => (
-              <MoveRow key={m.id} move={m} />
+              <MoveRow key={m.id} move={m} onClick={onMove ? () => onMove(m) : undefined} />
             ))}
           </ul>
         </section>
@@ -121,6 +125,7 @@ export function WealthStatus({
               label="A invertir"
               value={buckets.toInvest}
               warn={buckets.toInvest > 0}
+              onClick={buckets.toInvest > 0 ? onIdleCash : undefined}
             />
           </div>
         </section>
@@ -166,10 +171,10 @@ const STANCE_TONE: Record<string, string> = {
   divest: 'text-error',
 }
 
-function MoveRow({ move }: { move: CapitalMove }) {
-  return (
-    <li className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-      <div className="min-w-0">
+function MoveRow({ move, onClick }: { move: CapitalMove; onClick?: () => void }) {
+  const inner = (
+    <>
+      <div className="min-w-0 text-left">
         <p className={`text-label-sm font-semibold font-body uppercase tracking-wide ${STANCE_TONE[move.stance]}`}>
           {CAPITAL_STANCE_LABELS[move.stance]}
         </p>
@@ -179,6 +184,23 @@ function MoveRow({ move }: { move: CapitalMove }) {
         <span className="text-lg font-display font-semibold tabular-nums text-on-surface flex-shrink-0">
           {formatEur(move.amount, true)}
         </span>
+      )}
+    </>
+  )
+
+  return (
+    <li className="first:pt-0 last:pb-0">
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className="w-full flex items-center justify-between gap-3 py-2.5 -mx-1 px-1 rounded-lg
+            hover:bg-surface-container-low transition-colors"
+        >
+          {inner}
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-3 py-2.5">{inner}</div>
       )}
     </li>
   )
@@ -190,15 +212,17 @@ function CashStat({
   hint,
   warn,
   muted,
+  onClick,
 }: {
   label: string
   value: number
   hint?: string
   warn?: boolean
   muted?: boolean
+  onClick?: () => void
 }) {
-  return (
-    <div>
+  const body = (
+    <>
       <p className="text-label-sm text-on-surface/50 font-body truncate">{label}</p>
       <p
         className={`text-headline font-display font-semibold tabular-nums ${
@@ -210,8 +234,18 @@ function CashStat({
       {hint && (
         <p className="text-label-sm text-on-surface/40 font-body truncate mt-0.5">{hint}</p>
       )}
-    </div>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="text-left rounded-lg -m-1 p-1 hover:bg-surface-container-low">
+        {body}
+      </button>
+    )
+  }
+
+  return <div>{body}</div>
 }
 
 function Stat({

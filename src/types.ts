@@ -164,6 +164,10 @@ export interface Asset {
   updatedAt: string
 }
 
+export function isReadOnlyAsset(asset: Pick<Asset, 'source' | 'readOnly'>): boolean {
+  return asset.source === 'finca' || Boolean(asset.readOnly)
+}
+
 export interface WealthSnapshot {
   date: string
   netWorth: number
