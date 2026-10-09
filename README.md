@@ -22,7 +22,7 @@ Set both in Vercel Project Settings -> Environment Variables for Production and 
 Logged-in: CRUD assets/liabilities (inmuebles de Finca son solo lectura),
 migración localStorage one-shot, sync `POST /api/sync-finca`.
 No hay chat IA en la app: el patrimonio se consulta desde la terminal con `npm run wealth`.
-Arquitectura: `CLAUDE.md`. Schema para Grok: `supabase/README.md`.
+Arquitectura: `AGENTS.md`. Schema: `supabase/README.md`.
 
 ## Scripts
 
