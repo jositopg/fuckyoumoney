@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
-import { PatrimonioError, esEscritura, herramientas, planificar, sinSecretos } from './patrimonio-logica.js'
+import { PatrimonioError, esEscritura, herramientas, planificar, sinSecretos } from '../lib/patrimonio-logica.js'
 
 const { Client, types } = pg
 types.setTypeParser(1082, (valor) => valor)
