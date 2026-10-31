@@ -63,6 +63,16 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `POST /api/sync-finca` con Bearer JWT de Supabase. Lee `FINCA_DATABASE_URL` (o `~/.finca-db.env` en local) y llama `patrimonio_macro_snapshot()`. Upsert de `assets` con `id` = uuid de la propiedad Finca. No dispares ese POST contra producción por tu cuenta.
 
+## Lectura en vivo de Finca
+
+El agente de este repo tiene el servidor MCP `finca` (stdio, solo lectura). Las cifras salen de las mismas funciones que la app de alquileres. No escribe y no devuelve DNI, email, teléfono, NIF ni archivos.
+
+Herramientas: `listar_fincas`, `cobros_pendientes`, `huecos`, `avisos`, `resumen`, `modelo_420`, `rendimiento`, `repercutir`, `tareas`, `movimientos`.
+
+Úsalas cuando Jose pregunte por una renta, un cobro, la fiscalidad o una ficha. Los totales y la fiscalidad son las fincas de Jose en alquiler. `listar_fincas`, `tareas` y `movimientos` también ven las de terceros.
+
+El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies filas de inquilinos a `assets`, a un commit ni a las notas. Una alta de cobro o de gasto no se hace por aquí: se hace en la app de Finca.
+
 ## Convenciones
 
 - Importes de UI en EUR, locale `es-ES` (`formatEur`).

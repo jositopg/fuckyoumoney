@@ -1,0 +1,5 @@
+[mcp_servers.finca]
+command = "node"
+args = ["/Users/jose/Proyectos/finca/scripts/mcp/server.ts"]
+cwd = "/Users/jose/Proyectos/finca"
+enabled = true
