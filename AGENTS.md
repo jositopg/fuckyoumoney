@@ -63,6 +63,12 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `POST /api/sync-finca` con Bearer JWT de Supabase. Lee `FINCA_DATABASE_URL` (o `~/.finca-db.env` en local) y llama `patrimonio_macro_snapshot()`. Upsert de `assets` con `id` = uuid de la propiedad Finca. No dispares ese POST contra producción por tu cuenta.
 
+## API del patrimonio
+
+`https://fuckyoumoney.vercel.app/api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. El token está en `~/.fuckyoumoney-db.env`, fuera del repo. GET lista las herramientas. POST acepta `{ "herramienta", "argumentos" }` o un mensaje MCP.
+
+Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `crear_posicion`. Sin `confirmar: true` solo hay vista previa. Al confirmar hace falta `clave`. No edita inmuebles `source=finca`. No devuelve email, DNI ni el token.
+
 ## Lectura en vivo de Finca
 
 El agente de este repo tiene el servidor MCP `finca` (stdio, solo lectura). Las cifras salen de las mismas funciones que la app de alquileres. No escribe y no devuelve DNI, email, teléfono, NIF ni archivos.

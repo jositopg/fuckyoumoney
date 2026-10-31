@@ -27,6 +27,7 @@ describe('shouldTakeSnapshot', () => {
 
   it('returns true when last snapshot is in a previous month', () => {
     const lastMonth = new Date()
+    lastMonth.setDate(1)
     lastMonth.setMonth(lastMonth.getMonth() - 1)
     const lastMonthDate = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-01`
     const snapshots: WealthSnapshot[] = [
