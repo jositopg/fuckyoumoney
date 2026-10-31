@@ -71,13 +71,13 @@ Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `crear_posicion`.
 
 ## Lectura en vivo de Finca
 
-El agente de este repo tiene el servidor MCP `finca` (stdio, solo lectura). Las cifras salen de las mismas funciones que la app de alquileres. No escribe y no devuelve DNI, email, teléfono, NIF ni archivos.
+El agente de este repo tiene el servidor MCP `finca` (stdio). Las cifras salen de las mismas funciones que la app de alquileres. Puede leer y, con `confirmar: true` y una `clave`, registrar un cobro, un gasto o cerrar una tarea. No devuelve DNI, email, teléfono, NIF ni archivos.
 
 Herramientas: `listar_fincas`, `cobros_pendientes`, `huecos`, `avisos`, `resumen`, `modelo_420`, `rendimiento`, `repercutir`, `tareas`, `movimientos`.
 
 Úsalas cuando Jose pregunte por una renta, un cobro, la fiscalidad o una ficha. Los totales y la fiscalidad son las fincas de Jose en alquiler. `listar_fincas`, `tareas` y `movimientos` también ven las de terceros.
 
-El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies filas de inquilinos a `assets`, a un commit ni a las notas. Una alta de cobro o de gasto no se hace por aquí: se hace en la app de Finca.
+El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies filas de inquilinos a `assets`, a un commit ni a las notas. Un cobro o un gasto se registra con las herramientas de Finca, no creando una posición en este patrimonio.
 
 ## Convenciones
 
