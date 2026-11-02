@@ -164,10 +164,11 @@ async function aplicar(cliente, userId, nombre, args) {
         if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa deuda.')
       } else {
         const metadata = { ...ordenPosicionMetadata(posiciones, orden.id), ...precio(posiciones, orden.id, orden.valor) }
+        // $1 se usa dos veces. Sin ::numeric Postgres deduce numeric (la columna) e integer (el 0) y rechaza la escritura.
         const hecho = await cliente.query(
           `update assets
-             set manual_value = $1,
-                 purchase_price = case when $1 = 0 then 0 else purchase_price end,
+             set manual_value = $1::numeric,
+                 purchase_price = case when $1::numeric = 0 then 0 else purchase_price end,
                  metadata = $2::jsonb,
                  updated_at = now()
            where id = $3 and user_id = $4
