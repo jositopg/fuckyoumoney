@@ -88,12 +88,12 @@ El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies fi
 - Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker. Sin ticker o ISIN no se identifica.
 - Inmuebles: valor y `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio. La app usa TypeScript; SQL es para la terminal (`npm run wealth`).
-- Foto declarada: los importes los pone Jose. No hay precios al abrir ni interés diario. Tap en una posición editable = confirmar o cambiar el número; «Editar ficha» para el resto. Cuentas: «Saldos» recorre la lista. `updatedAt` es la fecha de la foto; el efectivo con 30 días o más se marca.
+- Foto declarada: los importes los pone Jose. No hay precios al abrir ni interés diario. Tap en una posición editable = confirmar o cambiar el número; «Editar ficha» para el resto. Cuentas: «Saldos» recorre la lista. `updatedAt` es la fecha de la foto; el efectivo con 30 días o más se marca. `fijar_valor` escribe `lastInterestUpdate` en `metadata` y en las notas `FYM1` para que un cliente viejo no vuelva a sumar el TAE.
 - `diagnosis.moves`: leave / deploy / operate / pay_down / divest.
 - Mezcla (`diagnosis.mix`): ladrillo alto no implica vender. Si el efectivo aguanta un parón de alquiler, equilibra con fondos. Vender solo si el golpe no se cubre; candidatos = vacíos.
 - Inmuebles de Finca no se editan ni se borran desde el formulario; los regenera el sync. El sync es automático; el error sale en portada; el botón está en Ajustes.
 - Preguntas del veredicto: gasto o colchón → Ajustes; idle o apartado sin motivo → editar esa cuenta. Un movimiento `deploy` abre el efectivo parado.
-- Al cargar, nube y local se fusionan (`updatedAt`); lo local más nuevo o solo-local se sube. Un deploy no puede borrar inversiones. Si falla el delete en la nube, no se borra en local.
+- Al cargar, la nube gana. Solo se sube una fila que ya existe si este dispositivo la tiene pendiente (`dirty`) y su `updatedAt` es posterior. Una fila que aún no está en la nube sí se sube. `saveCloudAsset` actualiza con el `updated_at` leído; si no afecta a ninguna fila, recarga esa ficha y no la pisa. El service worker (`fym-v14`) pide los JS a la red antes que a la caché. Un deploy no puede borrar inversiones. Si falla el delete en la nube, no se borra en local.
 
 ## No tocar
 

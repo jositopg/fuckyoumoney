@@ -10,7 +10,17 @@ import {
   mergeCloudWithLocalRealEstate,
   prepareMigrationPayload,
 } from './supabaseMapper'
-import type { Database, ProfileRow } from '../types/database'
+import type { AssetInsert, Database, LiabilityInsert, ProfileRow } from '../types/database'
+
+export class CloudConflictError extends Error {
+  readonly current: Asset
+
+  constructor(current: Asset) {
+    super('Esa ficha cambió en otro sitio. Se ha recargado el valor de la nube.')
+    this.name = 'CloudConflictError'
+    this.current = current
+  }
+}
 
 export const MIGRATION_FLAG_KEY = 'fym_migrated_to_supabase'
 
@@ -180,39 +190,89 @@ export function formatCloudError(err: unknown): string {
   return 'Error al guardar en la nube'
 }
 
+function sinMarca<T extends { id?: string; user_id?: string; created_at?: string }>(row: T) {
+  const { id, user_id, created_at, ...patch } = row
+  void id
+  void user_id
+  void created_at
+  return patch
+}
+
+/** Update only if the row still has the updated_at we read. Otherwise return the cloud row. */
+async function guardarActivo(row: AssetInsert, userId: string, id: string, baseUpdatedAt?: string): Promise<Asset> {
+  if (!supabase) throw new Error('Supabase no configurado')
+  if (baseUpdatedAt) {
+    const { data, error } = await supabase
+      .from('assets')
+      .update(sinMarca(row))
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('updated_at', baseUpdatedAt)
+      .select('*')
+      .maybeSingle()
+    if (error) throw new Error(formatCloudError(error))
+    if (data) return dbAssetToLocal(data)
+
+    const current = await supabase.from('assets').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+    if (current.error) throw new Error(formatCloudError(current.error))
+    if (current.data) throw new CloudConflictError(dbAssetToLocal(current.data))
+  }
+
+  const { data, error } = await supabase.from('assets').upsert(row, { onConflict: 'id' }).select('*').single()
+  if (error) throw new Error(formatCloudError(error))
+  return dbAssetToLocal(data)
+}
+
+async function guardarDeuda(row: LiabilityInsert, userId: string, id: string, baseUpdatedAt?: string): Promise<Asset> {
+  if (!supabase) throw new Error('Supabase no configurado')
+  if (baseUpdatedAt) {
+    const { data, error } = await supabase
+      .from('liabilities')
+      .update(sinMarca(row))
+      .eq('id', id)
+      .eq('user_id', userId)
+      .eq('updated_at', baseUpdatedAt)
+      .select('*')
+      .maybeSingle()
+    if (error) throw new Error(formatCloudError(error))
+    if (data) return dbLiabilityToLocal(data)
+
+    const current = await supabase.from('liabilities').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
+    if (current.error) throw new Error(formatCloudError(current.error))
+    if (current.data) throw new CloudConflictError(dbLiabilityToLocal(current.data))
+  }
+
+  const { data, error } = await supabase.from('liabilities').upsert(row, { onConflict: 'id' }).select('*').single()
+  if (error) throw new Error(formatCloudError(error))
+  return dbLiabilityToLocal(data)
+}
+
 /** Insert or update. Invalid local ids are replaced with a uuid. */
-export async function saveCloudAsset(asset: Asset, userId: string): Promise<Asset> {
+export async function saveCloudAsset(asset: Asset, userId: string, baseUpdatedAt?: string): Promise<Asset> {
   if (!supabase) throw new Error('Supabase no configurado')
   if (asset.readOnly || asset.source === 'finca') return asset
 
   const id = isUuid(asset.id) ? asset.id : crypto.randomUUID()
   const toSave = { ...asset, id }
+  const base = baseUpdatedAt ?? asset.baseUpdatedAt
 
   if (toSave.category === 'debt') {
     const row = localDebtToLiabilityInsert(toSave, userId, id)
     if (!row) throw new Error('No se pudo mapear la deuda')
-    const { data, error } = await supabase
-      .from('liabilities')
-      .upsert(row, { onConflict: 'id' })
-      .select()
-      .single()
-    if (error) throw new Error(formatCloudError(error))
-    return dbLiabilityToLocal(data)
+    return guardarDeuda(row, userId, id, base)
   }
 
   const row = localAssetToDbInsert(toSave, userId, id)
   if (!row) throw new Error('Categoría no sincronizable')
-  const { data, error } = await supabase.from('assets').upsert(row, { onConflict: 'id' }).select().single()
-  if (error) throw new Error(formatCloudError(error))
-  return dbAssetToLocal(data)
+  return guardarActivo(row, userId, id, base)
 }
 
 export async function createCloudAsset(asset: Asset, userId: string): Promise<Asset> {
   return saveCloudAsset(asset, userId)
 }
 
-export async function updateCloudAsset(asset: Asset, userId: string): Promise<Asset> {
-  return saveCloudAsset(asset, userId)
+export async function updateCloudAsset(asset: Asset, userId: string, baseUpdatedAt?: string): Promise<Asset> {
+  return saveCloudAsset(asset, userId, baseUpdatedAt)
 }
 
 export async function deleteCloudAsset(
@@ -301,9 +361,9 @@ export async function pushLocalAssetsToCloud(
       continue
     }
     try {
-      out.push(await saveCloudAsset(asset, userId))
-    } catch {
-      out.push(asset)
+      out.push(await saveCloudAsset(asset, userId, asset.baseUpdatedAt))
+    } catch (err) {
+      out.push(err instanceof CloudConflictError ? err.current : asset)
     }
   }
   return out

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'fym-v13-20260918'
+const CACHE_VERSION = 'fym-v14-20261102'
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -60,7 +60,23 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  // For JS/CSS/assets - stale-while-revalidate
+  // JS: red primero. Un bundle viejo en caché reescribía saldos con la foto de septiembre.
+  if (url.pathname.endsWith('.js')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(res => {
+          if (res.ok) {
+            const clone = res.clone()
+            caches.open(CACHE_VERSION).then(cache => cache.put(event.request, clone))
+          }
+          return res
+        })
+        .catch(() => caches.match(event.request).then(cached => cached || new Response('', { status: 503 })))
+    )
+    return
+  }
+
+  // CSS and other static files: stale-while-revalidate
   event.respondWith(
     caches.open(CACHE_VERSION).then(cache =>
       cache.match(event.request).then(cached => {

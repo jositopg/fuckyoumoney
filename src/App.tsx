@@ -12,12 +12,13 @@ import { CategorySection } from './components/CategorySection'
 import { ExportReminderBanner } from './components/ExportReminderBanner'
 import { OnboardingScreen } from './components/OnboardingScreen'
 import { largestIdleCash, parkedWithoutReason } from './utils/moneyDiagnosis'
-import { isCashStale, setAssetValue } from './utils/declaredValue'
+import { isCashStale, setAssetValue, withPendingEdit } from './utils/declaredValue'
 import { migrateData } from './utils/migrations'
 import { generateId } from './utils/id'
 import { takeSnapshot } from './utils/snapshots'
 import { exportData } from './utils/dataPortability'
 import {
+  CloudConflictError,
   createCloudAsset,
   deleteCloudAsset,
   formatCloudError,
@@ -69,6 +70,7 @@ export default function App() {
   const persistenceStatus = usePersistentStorage()
   const auth = useAuth()
   const syncingRef = useRef(false)
+  const savedDuringSync = useRef<Map<string, Asset>>(new Map())
 
   // Load / migrate cloud data when session appears
   useEffect(() => {
@@ -81,6 +83,7 @@ export default function App() {
     ;(async () => {
       try {
         syncingRef.current = true
+        savedDuringSync.current = new Map()
         const { cloudAssets, omittedRealEstate } = await migrateLocalToSupabaseIfNeeded(
           data.assets,
           auth.user!.id
@@ -110,9 +113,11 @@ export default function App() {
         if (cancelled) return
         setData(prev => {
           const again = mergeCloudAndLocal(assets, prev.assets)
+          const byId = new Map(again.merged.map(a => [a.id, a]))
+          for (const saved of savedDuringSync.current.values()) byId.set(saved.id, saved)
           return {
             ...prev,
-            assets: again.merged,
+            assets: [...byId.values()],
             ...(cloudSettings.monthlyExpenses != null
               ? { monthlyExpenses: cloudSettings.monthlyExpenses }
               : {}),
@@ -170,13 +175,23 @@ export default function App() {
     if (isReadOnlyAsset(updated)) return
     if (auth.user) {
       try {
-        const saved = await updateCloudAsset(updated, auth.user.id)
+        const saved = await updateCloudAsset(updated, auth.user.id, updated.baseUpdatedAt)
+        if (syncingRef.current) savedDuringSync.current.set(saved.id, saved)
         setData(prev => ({
           ...prev,
           assets: prev.assets.map(a => (a.id === updated.id ? saved : a)),
         }))
         setSyncError(null)
       } catch (err) {
+        if (err instanceof CloudConflictError) {
+          if (syncingRef.current) savedDuringSync.current.set(err.current.id, err.current)
+          setSyncError(err.message)
+          setData(prev => ({
+            ...prev,
+            assets: prev.assets.map(a => (a.id === updated.id || a.id === err.current.id ? err.current : a)),
+          }))
+          return
+        }
         setSyncError(formatCloudError(err))
         setData(prev => ({
           ...prev,
@@ -215,11 +230,7 @@ export default function App() {
     const loggedIn = Boolean(auth.user)
 
     if (editAsset) {
-      const updated: Asset = {
-        ...editAsset,
-        ...assetData,
-        updatedAt: new Date().toISOString(),
-      }
+      const updated = withPendingEdit(editAsset, assetData)
 
       if (isReadOnlyAsset(editAsset)) {
         setEditAsset(null)
@@ -237,6 +248,7 @@ export default function App() {
       ...assetData,
       createdAt: now,
       updatedAt: now,
+      dirty: true,
     }
 
     if (loggedIn) {

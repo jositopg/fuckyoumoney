@@ -670,9 +670,11 @@ function stamp(asset: Asset): number {
 }
 
 /**
- * Merge cloud + local without dropping unsynced edits.
- * Finca rows always come from cloud. Other local-only or newer local rows win
- * and are returned in `toUpsert` so they can be pushed up.
+ * Merge cloud + local.
+ * A row that exists in the cloud is uploaded only when this device has a pending
+ * edit (`dirty`) newer than the cloud. Otherwise the cloud wins, so a tab with
+ * the September photo cannot rewrite a balance. A row that is not in the cloud
+ * yet is still uploaded.
  */
 export function mergeCloudAndLocal(
   cloudAssets: Asset[],
@@ -699,7 +701,7 @@ export function mergeCloudAndLocal(
       continue
     }
     if (isFincaAsset(cloud)) continue
-    if (stamp(local) > stamp(cloud)) {
+    if (local.dirty && stamp(local) > stamp(cloud)) {
       merged.set(local.id, local)
       toUpsert.push(local)
     }

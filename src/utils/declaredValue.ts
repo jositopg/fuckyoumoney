@@ -35,6 +35,17 @@ export function isCashStale(asset: Asset, now = Date.now()): boolean {
   return asset.category === 'cash' && daysSince(asset.updatedAt, now) >= CASH_STALE_DAYS
 }
 
+/** Marca un cambio local. Conserva el `updated_at` de la nube para no pisar otra escritura. */
+export function withPendingEdit(asset: Asset, patch: Partial<Asset>, nowIso = new Date().toISOString()): Asset {
+  return {
+    ...asset,
+    ...patch,
+    dirty: true,
+    baseUpdatedAt: asset.baseUpdatedAt ?? asset.updatedAt,
+    updatedAt: nowIso,
+  }
+}
+
 /** The number you typed. Quantity, if any, only recalculates pricePerUnit. */
 export function setAssetValue(asset: Asset, value: number, nowIso = new Date().toISOString()): Asset {
   let metadata = asset.metadata
@@ -45,5 +56,5 @@ export function setAssetValue(asset: Asset, value: number, nowIso = new Date().t
       metadata = { ...meta, pricePerUnit: value / quantity }
     }
   }
-  return { ...asset, value, metadata, updatedAt: nowIso }
+  return withPendingEdit(asset, { value, metadata }, nowIso)
 }

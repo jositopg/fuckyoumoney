@@ -169,6 +169,10 @@ export interface Asset {
   metadata?: AssetMetadata
   source?: AssetSource
   readOnly?: boolean
+  /** Cambio de este dispositivo que la nube aún no ha confirmado. */
+  dirty?: boolean
+  /** `updated_at` de la fila leída. La escritura solo entra si la nube sigue ahí. */
+  baseUpdatedAt?: string
   createdAt: string
   updatedAt: string
 }

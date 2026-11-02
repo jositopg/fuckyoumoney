@@ -79,7 +79,11 @@ describe('setAssetValue', () => {
     const next = setAssetValue(a, 90, '2026-09-18T12:00:00.000Z')
     expect(next.value).toBe(90)
     expect(next.updatedAt).toBe('2026-09-18T12:00:00.000Z')
+    expect(next.dirty).toBe(true)
+    expect(next.baseUpdatedAt).toBe(a.updatedAt)
     expect(next.name).toBe('ING')
+    const twice = setAssetValue(next, 80, '2026-09-19T00:00:00.000Z')
+    expect(twice.baseUpdatedAt).toBe(a.updatedAt)
   })
 
   it('recomputes pricePerUnit when there is quantity', () => {

@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
-import { PatrimonioError, esEscritura, herramientas, planificar, sinSecretos } from '../lib/patrimonio-logica.js'
+import { PatrimonioError, esEscritura, herramientas, notasConInteres, planificar, sinSecretos } from '../lib/patrimonio-logica.js'
 
 const { Client, types } = pg
 types.setTypeParser(1082, (valor) => valor)
@@ -97,6 +97,7 @@ function trozosDe(fila) {
     slices: Array.isArray(slices) ? slices : undefined,
     quantity: Number.isFinite(quantity) ? quantity : undefined,
     metadata: meta,
+    notes: typeof fila.notes === 'string' ? fila.notes : null,
   }
 }
 
@@ -163,19 +164,26 @@ async function aplicar(cliente, userId, nombre, args) {
         )
         if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa deuda.')
       } else {
-        const metadata = { ...ordenPosicionMetadata(posiciones, orden.id), ...precio(posiciones, orden.id, orden.valor) }
+        const ahora = new Date().toISOString()
+        const metadata = {
+          ...ordenPosicionMetadata(posiciones, orden.id),
+          ...precio(posiciones, orden.id, orden.valor),
+          lastInterestUpdate: ahora,
+        }
+        const notes = notasConInteres(notasDe(posiciones, orden.id), ahora)
         // $1 se usa dos veces. Sin ::numeric Postgres deduce numeric (la columna) e integer (el 0) y rechaza la escritura.
         const hecho = await cliente.query(
           `update assets
              set manual_value = $1::numeric,
                  purchase_price = case when $1::numeric = 0 then 0 else purchase_price end,
                  metadata = $2::jsonb,
+                 notes = $5,
                  updated_at = now()
            where id = $3 and user_id = $4
              and coalesce(source, '') <> 'finca'
              and read_only is not true
              and coalesce(institution, '') <> 'finca'`,
-          [orden.valor, JSON.stringify(metadata), orden.id, userId],
+          [orden.valor, JSON.stringify(metadata), orden.id, userId, notes],
         )
         if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa posición.')
       }
@@ -220,6 +228,11 @@ async function aplicar(cliente, userId, nombre, args) {
 
 function ordenPosicionMetadata(posiciones, id) {
   return posiciones.find((p) => p.id === id)?.metadata ?? {}
+}
+
+function notasDe(posiciones, id) {
+  const notes = posiciones.find((p) => p.id === id)?.notes
+  return typeof notes === 'string' ? notes : null
 }
 
 function precio(posiciones, id, valor) {

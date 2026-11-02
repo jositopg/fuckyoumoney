@@ -32,6 +32,8 @@ function baseAsset(partial: Partial<Asset> & Pick<Asset, 'category' | 'name' | '
     metadata: partial.metadata,
     source: partial.source,
     readOnly: partial.readOnly,
+    dirty: partial.dirty,
+    baseUpdatedAt: partial.baseUpdatedAt,
     createdAt: partial.createdAt ?? '2024-01-01T00:00:00.000Z',
     updatedAt: partial.updatedAt ?? '2024-01-02T00:00:00.000Z',
   }
@@ -544,7 +546,7 @@ describe('prepareMigrationPayload', () => {
     expect(merged.find(a => a.category === 'cash')?.value).toBe(1)
   })
 
-  it('keeps unsynced local investments when Finca is already in the cloud', () => {
+  it('keeps a local-only investment and does not upload a newer copy that is not pending', () => {
     const cloud = [
       baseAsset({
         id: '11111111-1111-4111-8111-111111111111',
@@ -580,9 +582,37 @@ describe('prepareMigrationPayload', () => {
     ]
     const { merged, toUpsert } = mergeCloudAndLocal(cloud, local)
     expect(merged.find(a => a.category === 'stocks')?.value).toBe(8000)
-    expect(merged.find(a => a.id === cloud[0].id)?.value).toBe(250)
+    expect(merged.find(a => a.id === cloud[0].id)?.value).toBe(100)
     expect(merged.find(a => a.source === 'finca')?.name).toBe('Piso Finca')
-    expect(toUpsert.map(a => a.name).sort()).toEqual(['VWCE', 'Vieja editada'])
+    expect(toUpsert.map(a => a.name)).toEqual(['VWCE'])
+  })
+
+  it('uploads a pending edit only when it is newer than the cloud', () => {
+    const id = '11111111-1111-4111-8111-111111111111'
+    const cloud = [
+      baseAsset({ id, category: 'cash', name: 'BBVA', value: 374600.3, updatedAt: '2026-11-02T19:20:00.000Z' }),
+    ]
+    const pending = baseAsset({
+      id,
+      category: 'cash',
+      name: 'BBVA',
+      value: 374000,
+      updatedAt: '2026-11-02T19:30:00.000Z',
+      dirty: true,
+      baseUpdatedAt: '2026-11-02T19:20:00.000Z',
+    })
+    const stale = baseAsset({
+      ...pending,
+      value: 374894.12,
+      updatedAt: '2026-11-02T19:10:00.000Z',
+      dirty: true,
+    })
+    const fresh = mergeCloudAndLocal(cloud, [pending])
+    expect(fresh.merged.find(a => a.id === id)?.value).toBe(374000)
+    expect(fresh.toUpsert).toHaveLength(1)
+    const older = mergeCloudAndLocal(cloud, [stale])
+    expect(older.merged.find(a => a.id === id)?.value).toBe(374600.3)
+    expect(older.toUpsert).toHaveLength(0)
   })
 
   it('drops local real_estate once Finca is in the cloud', () => {
