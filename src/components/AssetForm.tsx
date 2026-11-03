@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type {
   Asset,
@@ -54,80 +54,171 @@ function kindFromCategory(cat: AssetCategory): Kind {
 const inputClass =
   'w-full bg-surface-container-highest text-on-surface rounded-xl px-4 py-3.5 font-body text-body placeholder:text-on-surface/30 focus:outline-none focus:ring-2 focus:ring-primary/30'
 
-export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: AssetFormProps) {
-  const [kind, setKind] = useState<Kind>('cash')
-  const [category, setCategory] = useState<AssetCategory>('cash')
-  const [name, setName] = useState('')
-  const [value, setValue] = useState('')
-  const [symbol, setSymbol] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [debtType, setDebtType] = useState<NonNullable<DebtMetadata['debtType']>>('hipoteca')
-  const [monthlyPayment, setMonthlyPayment] = useState('')
-  const [interestRate, setInterestRate] = useState('')
-  const [emergencyAmt, setEmergencyAmt] = useState('')
-  const [parkedAmt, setParkedAmt] = useState('')
-  const [parkedReason, setParkedReason] = useState('')
-  const [notes, setNotes] = useState('')
-  const [showMore, setShowMore] = useState(false)
-  const [error, setError] = useState('')
-  const [stockKind, setStockKind] = useState<StockKind>('etf')
-  const [region, setRegion] = useState<InvestRegion>('world')
-  const [assetClass, setAssetClass] = useState<InvestAssetClass>('equity')
-  const [broker, setBroker] = useState('')
+interface SemillaFormulario {
+  kind: Kind
+  category: AssetCategory
+  name: string
+  value: string
+  symbol: string
+  quantity: string
+  debtType: NonNullable<DebtMetadata['debtType']>
+  monthlyPayment: string
+  interestRate: string
+  emergencyAmt: string
+  parkedAmt: string
+  parkedReason: string
+  notes: string
+  showMore: boolean
+  stockKind: StockKind
+  region: InvestRegion
+  assetClass: InvestAssetClass
+  broker: string
+}
 
-  useEffect(() => {
-    if (!isOpen) return
-    if (editAsset) {
-      const k = kindFromCategory(editAsset.category)
-      setKind(k)
-      setCategory(editAsset.category)
-      setName(editAsset.name)
-      setValue(String(editAsset.value))
-      setSymbol(editAsset.symbol || '')
-      const sm = editAsset.metadata as StocksMetadata | CryptoMetadata | undefined
-      setQuantity(sm?.quantity != null ? String(sm.quantity) : '')
-      const dm = editAsset.metadata as DebtMetadata | undefined
-      setDebtType(dm?.debtType || 'hipoteca')
-      setMonthlyPayment(dm?.monthlyPayment != null ? String(dm.monthlyPayment) : '')
-      const cm = editAsset.metadata as CashMetadata | DebtMetadata | undefined
-      setInterestRate(cm?.interestRate != null ? String(cm.interestRate) : '')
-      const cashAlloc = cashAllocations(editAsset)
-      setEmergencyAmt(cashAlloc.emergency > 0 ? formatEurInput(cashAlloc.emergency) : '')
-      setParkedAmt(cashAlloc.parked > 0 ? formatEurInput(cashAlloc.parked) : '')
-      setParkedReason(cashAlloc.parkedReason || '')
-      const st = editAsset.metadata as StocksMetadata | PensionMetadata | undefined
-      setStockKind(st && 'assetType' in st && st.assetType ? st.assetType : 'etf')
-      setRegion(st && 'region' in st && st.region ? st.region : 'world')
-      setAssetClass(st && 'assetClass' in st && st.assetClass ? st.assetClass : 'equity')
-      setBroker(
-        (st && 'broker' in st && st.broker) ||
-          (st && 'manager' in st && st.manager) ||
-          ''
-      )
-      setNotes(editAsset.notes || '')
-      setShowMore(Boolean(dm?.monthlyPayment || editAsset.notes))
-    } else {
-      setKind('cash')
-      setCategory('cash')
-      setName('')
-      setValue('')
-      setSymbol('')
-      setQuantity('')
-      setDebtType('hipoteca')
-      setMonthlyPayment('')
-      setInterestRate('')
-      setEmergencyAmt('')
-      setParkedAmt('')
-      setParkedReason('')
-      setStockKind('etf')
-      setRegion('world')
-      setAssetClass('equity')
-      setBroker('')
-      setNotes('')
-      setShowMore(false)
+function semilla(editAsset?: Asset | null): SemillaFormulario {
+  if (!editAsset) {
+    return {
+      kind: 'cash',
+      category: 'cash',
+      name: '',
+      value: '',
+      symbol: '',
+      quantity: '',
+      debtType: 'hipoteca',
+      monthlyPayment: '',
+      interestRate: '',
+      emergencyAmt: '',
+      parkedAmt: '',
+      parkedReason: '',
+      notes: '',
+      showMore: false,
+      stockKind: 'etf',
+      region: 'world',
+      assetClass: 'equity',
+      broker: '',
     }
-    setError('')
-  }, [isOpen, editAsset])
+  }
+  const sm = editAsset.metadata as StocksMetadata | CryptoMetadata | undefined
+  const dm = editAsset.metadata as DebtMetadata | undefined
+  const cm = editAsset.metadata as CashMetadata | DebtMetadata | undefined
+  const cashAlloc = cashAllocations(editAsset)
+  const st = editAsset.metadata as StocksMetadata | PensionMetadata | undefined
+  return {
+    kind: kindFromCategory(editAsset.category),
+    category: editAsset.category,
+    name: editAsset.name,
+    value: String(editAsset.value),
+    symbol: editAsset.symbol || '',
+    quantity: sm?.quantity != null ? String(sm.quantity) : '',
+    debtType: dm?.debtType || 'hipoteca',
+    monthlyPayment: dm?.monthlyPayment != null ? String(dm.monthlyPayment) : '',
+    interestRate: cm?.interestRate != null ? String(cm.interestRate) : '',
+    emergencyAmt: cashAlloc.emergency > 0 ? formatEurInput(cashAlloc.emergency) : '',
+    parkedAmt: cashAlloc.parked > 0 ? formatEurInput(cashAlloc.parked) : '',
+    parkedReason: cashAlloc.parkedReason || '',
+    notes: editAsset.notes || '',
+    showMore: Boolean(dm?.monthlyPayment || editAsset.notes),
+    stockKind: st && 'assetType' in st && st.assetType ? st.assetType : 'etf',
+    region: st && 'region' in st && st.region ? st.region : 'world',
+    assetClass: st && 'assetClass' in st && st.assetClass ? st.assetClass : 'equity',
+    broker: (st && 'broker' in st && st.broker) || (st && 'manager' in st && st.manager) || '',
+  }
+}
+
+function aplicarSemilla(
+  seed: SemillaFormulario,
+  set: {
+    setKind: (v: Kind) => void
+    setCategory: (v: AssetCategory) => void
+    setName: (v: string) => void
+    setValue: (v: string) => void
+    setSymbol: (v: string) => void
+    setQuantity: (v: string) => void
+    setDebtType: (v: NonNullable<DebtMetadata['debtType']>) => void
+    setMonthlyPayment: (v: string) => void
+    setInterestRate: (v: string) => void
+    setEmergencyAmt: (v: string) => void
+    setParkedAmt: (v: string) => void
+    setParkedReason: (v: string) => void
+    setNotes: (v: string) => void
+    setShowMore: (v: boolean) => void
+    setStockKind: (v: StockKind) => void
+    setRegion: (v: InvestRegion) => void
+    setAssetClass: (v: InvestAssetClass) => void
+    setBroker: (v: string) => void
+    setError: (v: string) => void
+  }
+) {
+  set.setKind(seed.kind)
+  set.setCategory(seed.category)
+  set.setName(seed.name)
+  set.setValue(seed.value)
+  set.setSymbol(seed.symbol)
+  set.setQuantity(seed.quantity)
+  set.setDebtType(seed.debtType)
+  set.setMonthlyPayment(seed.monthlyPayment)
+  set.setInterestRate(seed.interestRate)
+  set.setEmergencyAmt(seed.emergencyAmt)
+  set.setParkedAmt(seed.parkedAmt)
+  set.setParkedReason(seed.parkedReason)
+  set.setNotes(seed.notes)
+  set.setShowMore(seed.showMore)
+  set.setStockKind(seed.stockKind)
+  set.setRegion(seed.region)
+  set.setAssetClass(seed.assetClass)
+  set.setBroker(seed.broker)
+  set.setError('')
+}
+
+export function AssetForm({ isOpen, onClose, onSave, onDelete, editAsset }: AssetFormProps) {
+  const firma = `${isOpen ? '1' : '0'}:${editAsset?.id ?? 'nueva'}`
+  const inicial = semilla(isOpen ? editAsset : null)
+  const [firmaVista, setFirmaVista] = useState(firma)
+  const [kind, setKind] = useState<Kind>(inicial.kind)
+  const [category, setCategory] = useState<AssetCategory>(inicial.category)
+  const [name, setName] = useState(inicial.name)
+  const [value, setValue] = useState(inicial.value)
+  const [symbol, setSymbol] = useState(inicial.symbol)
+  const [quantity, setQuantity] = useState(inicial.quantity)
+  const [debtType, setDebtType] = useState<NonNullable<DebtMetadata['debtType']>>(inicial.debtType)
+  const [monthlyPayment, setMonthlyPayment] = useState(inicial.monthlyPayment)
+  const [interestRate, setInterestRate] = useState(inicial.interestRate)
+  const [emergencyAmt, setEmergencyAmt] = useState(inicial.emergencyAmt)
+  const [parkedAmt, setParkedAmt] = useState(inicial.parkedAmt)
+  const [parkedReason, setParkedReason] = useState(inicial.parkedReason)
+  const [notes, setNotes] = useState(inicial.notes)
+  const [showMore, setShowMore] = useState(inicial.showMore)
+  const [error, setError] = useState('')
+  const [stockKind, setStockKind] = useState<StockKind>(inicial.stockKind)
+  const [region, setRegion] = useState<InvestRegion>(inicial.region)
+  const [assetClass, setAssetClass] = useState<InvestAssetClass>(inicial.assetClass)
+  const [broker, setBroker] = useState(inicial.broker)
+  if (firma !== firmaVista) {
+    setFirmaVista(firma)
+    if (isOpen) {
+      aplicarSemilla(semilla(editAsset), {
+        setKind,
+        setCategory,
+        setName,
+        setValue,
+        setSymbol,
+        setQuantity,
+        setDebtType,
+        setMonthlyPayment,
+        setInterestRate,
+        setEmergencyAmt,
+        setParkedAmt,
+        setParkedReason,
+        setNotes,
+        setShowMore,
+        setStockKind,
+        setRegion,
+        setAssetClass,
+        setBroker,
+        setError,
+      })
+    }
+  }
 
   function applyKind(next: Kind) {
     setKind(next)

@@ -21,10 +21,7 @@ export function useAuth(): AuthState {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false)
-      return
-    }
+    if (!supabase) return
 
     let mounted = true
 

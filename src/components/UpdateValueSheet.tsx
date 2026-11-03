@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { Asset } from '../types'
 import { formatCashJobsLine } from '../utils/moneyDiagnosis'
 import { formatEur } from '../utils/calculations'
@@ -28,14 +28,17 @@ export function UpdateValueSheet({
   onSkip,
   onEditDetails,
 }: UpdateValueSheetProps) {
-  const [raw, setRaw] = useState('')
+  const firma = isOpen && asset ? asset.id : 'cerrado'
+  const [firmaVista, setFirmaVista] = useState(firma)
+  const [raw, setRaw] = useState(() => (isOpen && asset ? formatEurInput(asset.value) : ''))
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!isOpen || !asset) return
-    setRaw(formatEurInput(asset.value))
-    setError('')
-  }, [isOpen, asset])
+  if (firma !== firmaVista) {
+    setFirmaVista(firma)
+    if (isOpen && asset) {
+      setRaw(formatEurInput(asset.value))
+      setError('')
+    }
+  }
 
   if (!asset) return null
 
