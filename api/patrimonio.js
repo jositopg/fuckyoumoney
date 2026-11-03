@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
 import { evolucionDe, fechaMadrid, netoDiario } from '../lib/evolucion.js'
+import { resumenMinusvalias, totalPlusvalias } from '../lib/plusvalias.js'
 import {
   PatrimonioError,
   esEscritura,
@@ -232,6 +233,16 @@ async function aplicar(cliente, userId, nombre, args) {
         )
       }
       orden.resultado.posicion = { ...orden.resultado.posicion, id }
+    } else if (orden.minusvalia) {
+      await cliente.query(
+        `insert into minusvalias_pendientes (user_id, anio, importe, compensado)
+         values ($1, $2::int, $3::numeric, $4::numeric)
+         on conflict (user_id, anio) do update set
+           importe = excluded.importe,
+           compensado = excluded.compensado,
+           updated_at = now()`,
+        [userId, orden.minusvalia.anio, orden.minusvalia.importe, orden.minusvalia.compensado],
+      )
     }
     await cliente.query('insert into agente_escrituras (clave, herramienta, resultado) values ($1,$2,$3::jsonb)', [
       orden.clave,
@@ -403,7 +414,25 @@ async function ejecutar(cliente, userId, nombre, args) {
   }
   if (nombre === 'posiciones') {
     const posiciones = await posicionesDe(cliente, userId)
-    return { posiciones: posiciones.map(fichaPublica) }
+    const fichas = posiciones.map(fichaPublica)
+    const filas = await cliente.query(
+      'select anio, importe, compensado from minusvalias_pendientes where user_id = $1 order by anio',
+      [userId],
+    )
+    const fiscal = resumenMinusvalias(
+      filas.rows.map((fila) => ({
+        anio: Number(fila.anio),
+        importe: Number(fila.importe),
+        compensado: Number(fila.compensado),
+      })),
+      Number(fechaMadrid().slice(0, 4)),
+    )
+    return {
+      posiciones: fichas,
+      plusvaliaTotal: totalPlusvalias(fichas),
+      minusvalias: fiscal.minusvalias,
+      avisos: fiscal.avisos,
+    }
   }
   if (nombre === 'evolucion') return leerEvolucion(cliente, userId, args)
   if (esEscritura(nombre)) return aplicar(cliente, userId, nombre, args)
@@ -456,7 +485,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle y crear_posicion no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. Los inmuebles de Finca no se editan aquí.',
+              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion y fijar_minusvalia no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. Los inmuebles de Finca no se editan aquí.',
           },
         }
       }

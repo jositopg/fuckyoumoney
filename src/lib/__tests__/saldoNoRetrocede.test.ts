@@ -55,6 +55,7 @@ const banco = vi.hoisted(() => {
   const liabilities: Fila[] = []
   const positionSnapshots: Fila[] = []
   const fotos: Fila[] = []
+  const minusvalias: Fila[] = []
   const escritos = new Map<string, { resultado: unknown }>()
   const ops: Operacion[] = []
   const sql: string[] = []
@@ -63,6 +64,7 @@ const banco = vi.hoisted(() => {
     liabilities: Fila[]
     escritos: [string, { resultado: unknown }][]
     fotos: Fila[]
+    minusvalias: Fila[]
   } | null = null
 
   function diaMadrid(ahora = new Date()): string {
@@ -329,6 +331,7 @@ const banco = vi.hoisted(() => {
         liabilities: clonar(liabilities),
         escritos: [...escritos.entries()],
         fotos: clonar(fotos),
+        minusvalias: clonar(minusvalias),
       }
       return { rows: [], rowCount: 0 }
     }
@@ -343,6 +346,7 @@ const banco = vi.hoisted(() => {
         escritos.clear()
         for (const [clave, escrito] of foto.escritos) escritos.set(clave, escrito)
         fotos.splice(0, fotos.length, ...foto.fotos)
+        minusvalias.splice(0, minusvalias.length, ...foto.minusvalias)
         foto = null
       }
       return { rows: [], rowCount: 0 }
@@ -410,6 +414,24 @@ const banco = vi.hoisted(() => {
         .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
       return { rows, rowCount: rows.length }
     }
+    if (norm.startsWith('insert into minusvalias_pendientes')) {
+      const filaMinus: Fila = {
+        user_id: params[0],
+        anio: Number(params[1]),
+        importe: Number(params[2]),
+        compensado: Number(params[3]),
+      }
+      const idx = minusvalias.findIndex(fila => fila.user_id === filaMinus.user_id && fila.anio === filaMinus.anio)
+      if (idx >= 0) Object.assign(minusvalias[idx], filaMinus)
+      else minusvalias.push(filaMinus)
+      return { rows: [], rowCount: 1 }
+    }
+    if (norm.includes('from minusvalias_pendientes')) {
+      const rows = minusvalias
+        .filter(fila => fila.user_id === params[0])
+        .sort((a, b) => Number(a.anio) - Number(b.anio))
+      return { rows, rowCount: rows.length }
+    }
     if (norm.includes('from assets a') || norm.includes('as clase')) {
       const rows = filasPosiciones()
       return { rows, rowCount: rows.length }
@@ -434,6 +456,7 @@ const banco = vi.hoisted(() => {
     liabilities.splice(0, liabilities.length)
     positionSnapshots.splice(0, positionSnapshots.length)
     fotos.splice(0, fotos.length)
+    minusvalias.splice(0, minusvalias.length)
     escritos.clear()
     ops.splice(0, ops.length)
     sql.splice(0, sql.length)
@@ -456,6 +479,7 @@ const banco = vi.hoisted(() => {
     assets,
     liabilities,
     fotos,
+    minusvalias,
     ops,
     sql,
     supabase,
@@ -525,6 +549,7 @@ interface CuerpoPatrimonio {
   posicion?: { id?: string; nombre?: string; valor?: number }
   serie?: { fecha: string; valor: number }[]
   variacion?: { '1d': { porcentaje: number | null } }
+  minusvalia?: { anio?: number; importe?: number; caduca?: number }
 }
 
 function crearRespuesta(): RespuestaHttp {
@@ -961,5 +986,37 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(vista.cuerpo.vistaPrevia).toBe(true)
     expect(banco.fotos.filter(fila => fila.position_id === banco.CUENTA)).toHaveLength(1)
     expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(250)
+  })
+
+  it('fijar_minusvalia con la misma clave no se apunta dos veces', async () => {
+    const primera = await postPatrimonio({
+      herramienta: 'fijar_minusvalia',
+      argumentos: { anio: 2022, importe: '1.000,00', confirmar: true, clave: 'minus-2022-01' },
+    })
+    expect(primera.codigo).toBe(200)
+    expect(primera.cuerpo.escrito).toBe(true)
+    expect(primera.cuerpo.repetida).toBe(false)
+    expect(primera.cuerpo.minusvalia).toMatchObject({ anio: 2022, importe: 1000, caduca: 2026 })
+    expect(banco.minusvalias).toHaveLength(1)
+
+    const inserts = banco.sql.filter(texto => texto.startsWith('insert into minusvalias_pendientes')).length
+    const segunda = await postPatrimonio({
+      herramienta: 'fijar_minusvalia',
+      argumentos: { anio: 2022, importe: '5', confirmar: true, clave: 'minus-2022-01' },
+    })
+    expect(segunda.codigo).toBe(200)
+    expect(segunda.cuerpo.repetida).toBe(true)
+    expect(segunda.cuerpo.minusvalia?.importe).toBe(1000)
+    expect(banco.sql.filter(texto => texto.startsWith('insert into minusvalias_pendientes')).length).toBe(inserts)
+    expect(banco.minusvalias).toEqual([
+      expect.objectContaining({ user_id: banco.USER, anio: 2022, importe: 1000, compensado: 0 }),
+    ])
+
+    const vista = await postPatrimonio({
+      herramienta: 'fijar_minusvalia',
+      argumentos: { anio: 2024, importe: '50', confirmar: false },
+    })
+    expect(vista.cuerpo.vistaPrevia).toBe(true)
+    expect(banco.minusvalias).toHaveLength(1)
   })
 })
