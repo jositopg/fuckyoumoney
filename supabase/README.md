@@ -37,4 +37,4 @@ node scripts/run-sql.mjs supabase/migrations/001_wealth_os.sql
 
 ## RLS
 
-`ai_guide` es legible con anon (sin cifras). El resto exige el usuario de Jose (`authenticated`) o `service_role` / `postgres`. `position_snapshots` (migración 014) y `minusvalias_pendientes` (migración 015) siguen la misma regla: cada usuario autenticado solo ve y escribe lo suyo (`auth.uid() = user_id`). postgres y la API no pasan por esa política.
+`ai_guide` es legible con anon (sin cifras). El resto exige el usuario de Jose (`authenticated`) o `service_role` / `postgres`. `position_snapshots` (migración 014) y `minusvalias_pendientes` (migración 015) siguen la misma regla: cada usuario autenticado solo ve y escribe lo suyo (`auth.uid() = user_id`). postgres y la API no pasan por esa política. `profiles.gastos_reales` (migración 016) es una columna del perfil, con la misma política que el resto de `profiles`.

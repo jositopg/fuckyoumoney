@@ -89,7 +89,11 @@ export default function App() {
           auth.user!.id
         )
         if (cancelled) return
-        let cloudSettings: { monthlyExpenses: number | null; emergencyTargetMonths: number | null } = {
+        let cloudSettings: {
+          monthlyExpenses: number | null
+          emergencyTargetMonths: number | null
+          gastosReales?: AppData['gastosReales']
+        } = {
           monthlyExpenses: null,
           emergencyTargetMonths: null,
         }
@@ -124,6 +128,7 @@ export default function App() {
             ...(cloudSettings.emergencyTargetMonths != null
               ? { emergencyTargetMonths: cloudSettings.emergencyTargetMonths }
               : {}),
+            ...(cloudSettings.gastosReales !== undefined ? { gastosReales: cloudSettings.gastosReales } : {}),
           }
         })
         setCloudReady(true)
@@ -397,6 +402,7 @@ export default function App() {
             assets={data.assets}
             monthlyExpenses={data.monthlyExpenses}
             emergencyTargetMonths={data.emergencyTargetMonths}
+            gastosReales={data.gastosReales}
             onAsk={q => {
               if (q.id === 'expenses' || q.id === 'emergency_target') {
                 setIsSettingsOpen(true)
@@ -549,6 +555,7 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           monthlyExpenses={data.monthlyExpenses}
           emergencyTargetMonths={data.emergencyTargetMonths}
+          gastosReales={data.gastosReales}
           onSave={handleSaveSettings}
           data={data}
           setData={setData}

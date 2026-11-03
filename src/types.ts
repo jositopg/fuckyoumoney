@@ -211,6 +211,8 @@ export interface AppData {
   monthlyExpenses: number
   /** Months of expenses to keep as emergency cash. Undefined = not asked yet (default 6). */
   emergencyTargetMonths?: number
+  /** Gasto real del perfil. null: no hay. Ausente: esta sesión aún no lo ha leído. */
+  gastosReales?: import('./utils/gastos').GastosReales | null
   lastPriceUpdate?: string
   snapshots?: WealthSnapshot[]
   lastExportReminder?: string // ISO date — last time we showed the export reminder

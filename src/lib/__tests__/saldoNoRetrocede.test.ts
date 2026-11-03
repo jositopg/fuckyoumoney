@@ -56,6 +56,10 @@ const banco = vi.hoisted(() => {
   const positionSnapshots: Fila[] = []
   const fotos: Fila[] = []
   const minusvalias: Fila[] = []
+  const perfil: { monthly_expenses: number; gastos_reales: unknown } = {
+    monthly_expenses: 2000,
+    gastos_reales: null,
+  }
   const escritos = new Map<string, { resultado: unknown }>()
   const ops: Operacion[] = []
   const sql: string[] = []
@@ -65,6 +69,7 @@ const banco = vi.hoisted(() => {
     escritos: [string, { resultado: unknown }][]
     fotos: Fila[]
     minusvalias: Fila[]
+    gastos_reales: unknown
   } | null = null
 
   function diaMadrid(ahora = new Date()): string {
@@ -332,6 +337,7 @@ const banco = vi.hoisted(() => {
         escritos: [...escritos.entries()],
         fotos: clonar(fotos),
         minusvalias: clonar(minusvalias),
+        gastos_reales: clonar(perfil.gastos_reales),
       }
       return { rows: [], rowCount: 0 }
     }
@@ -347,11 +353,25 @@ const banco = vi.hoisted(() => {
         for (const [clave, escrito] of foto.escritos) escritos.set(clave, escrito)
         fotos.splice(0, fotos.length, ...foto.fotos)
         minusvalias.splice(0, minusvalias.length, ...foto.minusvalias)
+        perfil.gastos_reales = foto.gastos_reales
         foto = null
       }
       return { rows: [], rowCount: 0 }
     }
     if (norm.startsWith('create table')) return { rows: [], rowCount: 0 }
+    if (norm.includes('patrimonio_ia')) {
+      return { rows: [{ snap: { monthlyExpenses: perfil.monthly_expenses, currency: 'EUR' } }], rowCount: 1 }
+    }
+    if (norm.startsWith('update profiles')) {
+      perfil.gastos_reales = typeof params[1] === 'string' ? JSON.parse(params[1]) : params[1]
+      return { rows: [], rowCount: 1 }
+    }
+    if (norm.includes('from profiles') && norm.includes('gastos_reales')) {
+      return {
+        rows: [{ monthly_expenses: perfil.monthly_expenses, gastos_reales: perfil.gastos_reales }],
+        rowCount: 1,
+      }
+    }
     if (norm.includes('from profiles')) return { rows: [{ id: USER }], rowCount: 1 }
     if (norm.includes('patrimonio_macro_snapshot')) return { rows: [{ snap: snapshot }], rowCount: 1 }
     if (norm.startsWith('select resultado from agente_escrituras')) {
@@ -457,6 +477,8 @@ const banco = vi.hoisted(() => {
     positionSnapshots.splice(0, positionSnapshots.length)
     fotos.splice(0, fotos.length)
     minusvalias.splice(0, minusvalias.length)
+    perfil.monthly_expenses = 2000
+    perfil.gastos_reales = null
     escritos.clear()
     ops.splice(0, ops.length)
     sql.splice(0, sql.length)
@@ -480,6 +502,7 @@ const banco = vi.hoisted(() => {
     liabilities,
     fotos,
     minusvalias,
+    perfil,
     ops,
     sql,
     supabase,
@@ -550,6 +573,9 @@ interface CuerpoPatrimonio {
   serie?: { fecha: string; valor: number }[]
   variacion?: { '1d': { porcentaje: number | null } }
   minusvalia?: { anio?: number; importe?: number; caduca?: number }
+  gastosReales?: { mediaMensual?: number }
+  gasto?: { importe?: number; origen?: string; manual?: number; caducado?: boolean }
+  monthlyExpenses?: number
 }
 
 function crearRespuesta(): RespuestaHttp {
@@ -1018,5 +1044,76 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     })
     expect(vista.cuerpo.vistaPrevia).toBe(true)
     expect(banco.minusvalias).toHaveLength(1)
+  })
+
+  it('fijar_gastos con la misma clave no se apunta dos veces y no toca saldos', async () => {
+    sembrarCuenta(100, NUBE)
+    const fotosAntes = banco.fotos.length
+    const primera = await postPatrimonio({
+      herramienta: 'fijar_gastos',
+      argumentos: {
+        mediaMensual: '1.850,50',
+        meses: 6,
+        fuente: 'banco',
+        hasta: '2026-10-31',
+        confirmar: true,
+        clave: 'gasto-banco-01',
+      },
+    })
+    expect(primera.codigo).toBe(200)
+    expect(primera.cuerpo.escrito).toBe(true)
+    expect(primera.cuerpo.repetida).toBe(false)
+    expect(primera.cuerpo.gastosReales?.mediaMensual).toBe(1850.5)
+    expect(primera.cuerpo.gasto).toMatchObject({ importe: 1850.5, origen: 'real' })
+    expect(banco.perfil.gastos_reales).toMatchObject({ mediaMensual: 1850.5, meses: 6, fuente: 'banco' })
+    expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(100)
+    expect(banco.fotos).toHaveLength(fotosAntes)
+    expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
+
+    const updates = banco.sql.filter(texto => texto.startsWith('update profiles')).length
+    const segunda = await postPatrimonio({
+      herramienta: 'fijar_gastos',
+      argumentos: {
+        mediaMensual: '9',
+        meses: 6,
+        fuente: 'banco',
+        hasta: '2026-10-31',
+        confirmar: true,
+        clave: 'gasto-banco-01',
+      },
+    })
+    expect(segunda.codigo).toBe(200)
+    expect(segunda.cuerpo.repetida).toBe(true)
+    expect(segunda.cuerpo.gastosReales?.mediaMensual).toBe(1850.5)
+    expect(banco.sql.filter(texto => texto.startsWith('update profiles')).length).toBe(updates)
+    expect(banco.perfil.gastos_reales).toMatchObject({ mediaMensual: 1850.5 })
+
+    const vista = await postPatrimonio({
+      herramienta: 'fijar_gastos',
+      argumentos: { mediaMensual: '50', meses: 3, fuente: 'caja', hasta: '2026-09-30', confirmar: false },
+    })
+    expect(vista.cuerpo.vistaPrevia).toBe(true)
+    expect(banco.perfil.gastos_reales).toMatchObject({ mediaMensual: 1850.5 })
+    expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(100)
+  })
+
+  it('patrimonio dice el gasto usado y, sin dato real, el manual', async () => {
+    const manual = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(manual.codigo).toBe(200)
+    expect(manual.cuerpo.gasto).toMatchObject({ importe: 2000, origen: 'manual', manual: 2000, caducado: false })
+    expect(manual.cuerpo.monthlyExpenses).toBe(2000)
+
+    banco.perfil.gastos_reales = {
+      mediaMensual: 1800,
+      meses: 6,
+      fuente: 'banco',
+      hasta: '2026-10-31',
+      actualizado: new Date().toISOString(),
+    }
+    const real = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(real.codigo).toBe(200)
+    expect(real.cuerpo.gasto).toMatchObject({ importe: 1800, origen: 'real', manual: 2000, caducado: false })
+    expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
+    expect(banco.sql.some(texto => texto.startsWith('update profiles'))).toBe(false)
   })
 })

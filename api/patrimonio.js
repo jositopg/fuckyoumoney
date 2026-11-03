@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
 import { evolucionDe, fechaMadrid, netoDiario } from '../lib/evolucion.js'
+import { gastoEfectivo } from '../lib/gastos.js'
 import { resumenMinusvalias, totalPlusvalias } from '../lib/plusvalias.js'
 import {
   PatrimonioError,
@@ -243,6 +244,12 @@ async function aplicar(cliente, userId, nombre, args) {
            updated_at = now()`,
         [userId, orden.minusvalia.anio, orden.minusvalia.importe, orden.minusvalia.compensado],
       )
+    } else if (orden.gastos) {
+      const hecho = await cliente.query(
+        `update profiles set gastos_reales = $2::jsonb where id = $1`,
+        [userId, JSON.stringify(orden.gastos)],
+      )
+      if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido guardar el gasto.')
     }
     await cliente.query('insert into agente_escrituras (clave, herramienta, resultado) values ($1,$2,$3::jsonb)', [
       orden.clave,
@@ -410,7 +417,19 @@ async function leerEvolucion(cliente, userId, args) {
 async function ejecutar(cliente, userId, nombre, args) {
   if (nombre === 'patrimonio') {
     const fila = await cliente.query('select patrimonio_ia() as snap')
-    return sinSecretos(fila.rows[0]?.snap ?? {})
+    const perfil = await cliente.query(
+      'select monthly_expenses, gastos_reales from profiles where id = $1',
+      [userId],
+    )
+    const snap = sinSecretos(fila.rows[0]?.snap ?? {})
+    const manual =
+      perfil.rows[0]?.monthly_expenses == null
+        ? Number(snap.monthlyExpenses ?? 0)
+        : Number(perfil.rows[0].monthly_expenses)
+    return {
+      ...snap,
+      gasto: gastoEfectivo(manual, perfil.rows[0]?.gastos_reales ?? null, new Date().toISOString()),
+    }
   }
   if (nombre === 'posiciones') {
     const posiciones = await posicionesDe(cliente, userId)
@@ -485,7 +504,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion y fijar_minusvalia no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. Los inmuebles de Finca no se editan aquí.',
+              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. patrimonio dice el gasto mensual usado y si sale del ajuste manual o del gasto real. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion, fijar_minusvalia y fijar_gastos no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. fijar_gastos guarda la media del agente Banco y no toca saldos. Los inmuebles de Finca no se editan aquí.',
           },
         }
       }

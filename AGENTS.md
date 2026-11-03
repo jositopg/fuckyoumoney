@@ -22,7 +22,7 @@ npm run wealth    # briefing JSON del patrimonio, para esta terminal
 Un cambio no está listo hasta que `npx vitest run`, lint y build salen limpios. Merge a `main` solo con build y test verdes.
 
 - Serverless: `api/sync-finca.js` (ingesta de inmuebles). No hay chat en la app.
-- SQL: `supabase/migrations/` (última `015_minusvalias_pendientes.sql`) con `~/.fuckyoumoney-db.env`.
+- SQL: `supabase/migrations/` (última `016_gastos_reales.sql`) con `~/.fuckyoumoney-db.env`.
 
 ## Carpetas
 
@@ -67,11 +67,15 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `https://fuckyoumoney.vercel.app/api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. El token está en `~/.fuckyoumoney-db.env`, fuera del repo. GET lista las herramientas. POST acepta `{ "herramienta", "argumentos" }` o un mensaje MCP.
 
-Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`, `fijar_minusvalia`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`, `fijar_minusvalia`, `fijar_gastos`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+
+`patrimonio` devuelve `gasto`: `importe` (el que usa el diagnóstico), `origen` (`real` o `manual`), `manual` (el ajuste del perfil), `actualizado`, `hasta`, `fuente`, `meses` y `caducado`. Sin gasto real, `importe` es `monthly_expenses` y el resto del briefing no cambia.
 
 `posiciones` añade `plusvalia` en cada ficha (`euros`, `porcentaje`, `coste`) y `plusvaliaTotal`. Sin coste fiscal es `null`, nunca 0. El coste es `costeFiscalTotal` si es mayor que cero; si no, `participaciones × precioMedioCompra`. `fechaCompra` no entra en la cuenta. `assets.quantity = 1` no son participaciones, y el `purchase_price` suelto tampoco es coste.
 
 `fijar_minusvalia` guarda `{ anio, importe, compensado }` en `minusvalias_pendientes` (una fila por año; la última gana). `compensado` por defecto es 0 y no puede pasar del importe. La pérdida del año N caduca al terminar N+4. `posiciones` devuelve `minusvalias` y `avisos` de las que caducan este año y aún tienen pendiente. No se inventan pérdidas a partir de ventas.
+
+`fijar_gastos` guarda en `profiles.gastos_reales` la media que calcula el agente Banco: `{ mediaMensual, meses, fuente, hasta, actualizado }` y, si viene, `desglose` por categoría. No cambia `monthly_expenses`, no mueve saldos y no hace foto del día. `mediaMensual` es mayor que cero. `meses` es un entero de 3 a 24. `fuente` tiene de 1 a 80 caracteres. `hasta` es `AAAA-MM-DD`. `actualizado` lo pone el servidor. El diagnóstico (app y `patrimonio_ia()`) usa `mediaMensual` si `actualizado` tiene menos de 60 días; si no, vuelve el ajuste manual. No se inventa un gasto a partir de movimientos que no se hayan apuntado.
 
 `evolucion` no escribe. `posicion` es opcional (nombre o id, también un inmueble de Finca). Sin ella la serie es el neto. `desde` y `hasta` son `AAAA-MM-DD`. La respuesta trae `serie` y `variacion` (`1d`, `30d`, `ytd`, `12m`), cada una con `porcentaje`, `base`, `actual` y `desde`.
 
@@ -85,7 +89,7 @@ Si hay `participaciones`, `pricePerUnit` es el valor partido por esas participac
 
 `aportacionAnual` por encima de 1.500 € (límite general de los planes individuales) añade `avisos` en la respuesta y no rechaza la escritura.
 
-El sueldo no es una clase nueva ni un campo del perfil. Una posición `ingreso` entraría en el neto, y el colchón se mide con el gasto mensual del perfil (`monthlyExpenses`), no con la nómina. `ingresoMensualNeto` y `pagasAnuales` se guardan en la posición que se indique (la cuenta de la nómina) y no cambian el veredicto.
+El sueldo no es una clase nueva ni un campo del perfil. Una posición `ingreso` entraría en el neto, y el colchón se mide con el gasto mensual (`monthlyExpenses`, o `gastosReales.mediaMensual` si tiene menos de 60 días), no con la nómina. `ingresoMensualNeto` y `pagasAnuales` se guardan en la posición que se indique (la cuenta de la nómina) y no cambian el veredicto.
 
 Vista previa, no escribe:
 
@@ -146,3 +150,4 @@ La app ya está en producción. Tras cada commit: `git push` sin preguntar.
 - El login de la app no se prueba desde el agente.
 - La foto diaria no se toma cuando Finca sincroniza un inmueble, ni en la migración local de un usuario que aún no tiene filas. Entra con el backfill de hoy o en el siguiente guardado desde la app.
 - La plusvalía latente no sale de un precio de compra guardado como valor total, ni de una venta que no se haya anotado. Las minusvalías pendientes solo existen si se apuntan con `fijar_minusvalia`.
+- El gasto real solo existe si se apunta con `fijar_gastos`. A los 60 días deja de usarse y queda el ajuste manual de Ajustes. El desglose no entra en el colchón: solo la media.

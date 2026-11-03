@@ -347,6 +347,34 @@ export async function deleteCloudAsset(
 export interface ProfileSettings {
   monthlyExpenses: number | null
   emergencyTargetMonths: number | null
+  /** undefined: la lectura falló y no hay que pisar el valor local. null: no hay gasto real. */
+  gastosReales?: import('../utils/gastos').GastosReales | null
+}
+
+function gastosDesdeFila(raw: unknown): import('../utils/gastos').GastosReales | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const fila = raw as Record<string, unknown>
+  const media = Number(fila.mediaMensual)
+  if (!Number.isFinite(media)) return null
+  const desglose = desgloseDesde(fila.desglose)
+  return {
+    mediaMensual: media,
+    meses: Number(fila.meses),
+    fuente: typeof fila.fuente === 'string' ? fila.fuente : '',
+    hasta: typeof fila.hasta === 'string' ? fila.hasta : '',
+    actualizado: typeof fila.actualizado === 'string' ? fila.actualizado : '',
+    ...(desglose ? { desglose } : {}),
+  }
+}
+
+function desgloseDesde(raw: unknown): Record<string, number> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const salida: Record<string, number> = {}
+  for (const [clave, valor] of Object.entries(raw)) {
+    const n = Number(valor)
+    if (Number.isFinite(n)) salida[clave] = n
+  }
+  return Object.keys(salida).length > 0 ? salida : undefined
 }
 
 export async function getProfileMonthlyExpenses(userId: string): Promise<number | null> {
@@ -355,21 +383,26 @@ export async function getProfileMonthlyExpenses(userId: string): Promise<number 
 }
 
 export async function getProfileSettings(userId: string): Promise<ProfileSettings> {
-  if (!supabase) return { monthlyExpenses: null, emergencyTargetMonths: null }
+  if (!supabase) return { monthlyExpenses: null, emergencyTargetMonths: null, gastosReales: null }
   const { data, error } = await supabase
     .from('profiles')
-    .select('monthly_expenses, emergency_target_months')
+    .select('monthly_expenses, emergency_target_months, gastos_reales')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
     console.warn('getProfileSettings failed', error.message)
     return { monthlyExpenses: null, emergencyTargetMonths: null }
   }
-  const row = data as { monthly_expenses?: number | null; emergency_target_months?: number | null } | null
+  const row = data as {
+    monthly_expenses?: number | null
+    emergency_target_months?: number | null
+    gastos_reales?: unknown
+  } | null
   return {
     monthlyExpenses: row?.monthly_expenses != null ? Number(row.monthly_expenses) : null,
     emergencyTargetMonths:
       row?.emergency_target_months != null ? Number(row.emergency_target_months) : null,
+    gastosReales: gastosDesdeFila(row?.gastos_reales),
   }
 }
 
