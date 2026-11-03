@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { BottomSheet } from './BottomSheet'
 import { formatEur } from '../utils/calculations'
 import { exportData, importData } from '../utils/dataPortability'
+import { fechaDeGasto, gastoEfectivo, type GastosReales } from '../utils/gastos'
 import { migrateData } from '../utils/migrations'
 import { usePersistentStorage } from '../hooks/usePersistentStorage'
 import type { AppData } from '../types'
@@ -12,6 +13,7 @@ interface SettingsSheetProps {
   onClose: () => void
   monthlyExpenses: number
   emergencyTargetMonths?: number
+  gastosReales?: GastosReales | null
   onSave: (settings: { monthlyExpenses: number; emergencyTargetMonths: number }) => void
   data: AppData
   setData: (value: AppData | ((prev: AppData) => AppData)) => void
@@ -30,6 +32,7 @@ export function SettingsSheet({
   onClose,
   monthlyExpenses,
   emergencyTargetMonths,
+  gastosReales,
   onSave,
   data,
   setData,
@@ -46,6 +49,7 @@ export function SettingsSheet({
   const [authBusy, setAuthBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const persistenceStatus = usePersistentStorage()
+  const gasto = gastoEfectivo(monthlyExpenses, gastosReales ?? null, new Date().toISOString())
 
   useEffect(() => {
     if (isOpen) {
@@ -137,6 +141,18 @@ export function SettingsSheet({
             {monthlyExpenses > 0 && (
               <span className="block mt-1 text-primary font-medium">
                 Actual: {formatEur(monthlyExpenses)}/mes
+              </span>
+            )}
+            {gasto.origen === 'real' && gasto.actualizado && (
+              <span className="block mt-1 text-primary font-medium">
+                El diagnóstico usa el gasto real: {formatEur(gasto.importe)}/mes, actualizado el{' '}
+                {fechaDeGasto(gasto.actualizado)}.
+              </span>
+            )}
+            {gasto.caducado && gasto.actualizado && (
+              <span className="block mt-1 font-medium">
+                El gasto real del {fechaDeGasto(gasto.actualizado)} caducó. El diagnóstico usa este
+                ajuste.
               </span>
             )}
           </p>

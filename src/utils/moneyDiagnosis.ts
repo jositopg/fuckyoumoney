@@ -1,6 +1,7 @@
 import type { Asset, CashJob, CashMetadata, CashSlice, DebtMetadata, RealEstateMetadata } from '../types'
 import { CASH_JOB_LABELS } from '../types'
 import { formatEur, getTotalMonthlyDebtPayments, getTotalPositiveAssets } from './calculations'
+import { gastoEfectivo, type GastosReales, type GastoUsado } from './gastos'
 
 export const DEFAULT_EMERGENCY_MONTHS = 6
 
@@ -158,6 +159,8 @@ export interface WealthDiagnosis {
   actions: DiagnosisAction[]
   questions: DiagnosisQuestion[]
   missing: string[]
+  /** Importe que ha entrado en el colchón y en la cobertura. Sin dato real, es el manual. */
+  gasto: GastoUsado
 }
 
 const HABITUAL_STATUS = new Set(['vivienda_habitual', 'uso_propio'])
@@ -646,8 +649,24 @@ export function deployableCash(
 export function diagnoseWealth(
   assets: Asset[],
   monthlyExpenses: number,
-  emergencyTargetMonths?: number | null
+  emergencyTargetMonths?: number | null,
+  gastosReales?: GastosReales | null,
+  ahora?: string,
 ): WealthDiagnosis {
+  const gasto = gastoEfectivo(monthlyExpenses, gastosReales ?? null, ahora ?? new Date().toISOString())
+  const diagnosis = diagnoseFromExpenses(
+    assets,
+    gasto.origen === 'real' ? gasto.importe : monthlyExpenses,
+    emergencyTargetMonths,
+  )
+  return { ...diagnosis, gasto }
+}
+
+function diagnoseFromExpenses(
+  assets: Asset[],
+  monthlyExpenses: number,
+  emergencyTargetMonths?: number | null,
+): Omit<WealthDiagnosis, 'gasto'> {
   const buckets = moneyBuckets(assets)
   const re = realEstateYield(assets)
   const targetAsked = emergencyTargetMonths != null && emergencyTargetMonths > 0

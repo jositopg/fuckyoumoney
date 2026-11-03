@@ -250,6 +250,51 @@ describe('realEstateYield', () => {
 })
 
 describe('diagnoseWealth', () => {
+  it('usa el gasto real vigente y, si caduca, el mismo manual de antes', () => {
+    const colchon = [
+      asset({ category: 'cash', name: 'Colchón', value: 12000, metadata: { job: 'emergency' } }),
+    ]
+    const manual = diagnoseWealth(colchon, 2000, 6, null, '2026-11-03T00:00:00.000Z')
+    const real = diagnoseWealth(
+      colchon,
+      2000,
+      6,
+      {
+        mediaMensual: 3000,
+        meses: 6,
+        fuente: 'banco',
+        hasta: '2026-10-31',
+        actualizado: '2026-11-01T00:00:00.000Z',
+      },
+      '2026-11-03T00:00:00.000Z',
+    )
+    const caducado = diagnoseWealth(
+      colchon,
+      2000,
+      6,
+      {
+        mediaMensual: 3000,
+        meses: 6,
+        fuente: 'banco',
+        hasta: '2026-10-31',
+        actualizado: '2026-09-04T00:00:00.000Z',
+      },
+      '2026-11-03T00:00:00.000Z',
+    )
+
+    expect(manual.cashflow.emergencyMonths).toBe(6)
+    expect(manual.gasto).toMatchObject({ importe: 2000, origen: 'manual', caducado: false })
+    expect(real.cashflow.emergencyMonths).toBe(4)
+    expect(real.cashflow.monthlyExpenses).toBe(3000)
+    expect(real.gasto.origen).toBe('real')
+    expect(caducado.cashflow.emergencyMonths).toBe(manual.cashflow.emergencyMonths)
+    expect(caducado.cashflow.emergencyGap).toBe(manual.cashflow.emergencyGap)
+    expect(caducado.headline).toBe(manual.headline)
+    expect(caducado.verdict).toBe(manual.verdict)
+    expect(caducado.gasto.caducado).toBe(true)
+    expect(caducado.gasto.importe).toBe(2000)
+  })
+
   it('asks for expenses before judging', () => {
     const d = diagnoseWealth([asset({ category: 'cash', name: 'A', value: 10000 })], 0)
     expect(d.verdict).toBe('unknown')

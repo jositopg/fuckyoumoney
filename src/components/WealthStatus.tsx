@@ -1,5 +1,6 @@
 import type { Asset } from '../types'
 import { formatEur } from '../utils/calculations'
+import { fechaDeGasto, type GastosReales } from '../utils/gastos'
 import {
   CAPITAL_STANCE_LABELS,
   diagnoseWealth,
@@ -13,6 +14,7 @@ interface WealthStatusProps {
   assets: Asset[]
   monthlyExpenses: number
   emergencyTargetMonths?: number
+  gastosReales?: GastosReales | null
   onAsk?: (question: DiagnosisQuestion) => void
   onMove?: (move: CapitalMove) => void
   onIdleCash?: () => void
@@ -36,13 +38,14 @@ export function WealthStatus({
   assets,
   monthlyExpenses,
   emergencyTargetMonths,
+  gastosReales,
   onAsk,
   onMove,
   onIdleCash,
 }: WealthStatusProps) {
   if (assets.length === 0) return null
 
-  const d = diagnoseWealth(assets, monthlyExpenses, emergencyTargetMonths)
+  const d = diagnoseWealth(assets, monthlyExpenses, emergencyTargetMonths, gastosReales)
   const { buckets, realEstate: re, cashflow } = d
   const hasCash = buckets.unparked + buckets.parked > 0
   const coverage =
@@ -58,6 +61,16 @@ export function WealthStatus({
         {coverage != null && (
           <p className="text-label-sm font-body tabular-nums text-on-surface/50 mt-1">
             Renta neta cubre {coverage}%
+          </p>
+        )}
+        {d.gasto.origen === 'real' && d.gasto.actualizado && (
+          <p className="text-label-sm font-body text-on-surface/50 mt-1">
+            Gasto real: {formatEur(d.gasto.importe)}/mes · {fechaDeGasto(d.gasto.actualizado)}
+          </p>
+        )}
+        {d.gasto.caducado && d.gasto.actualizado && (
+          <p className="text-label-sm font-body text-on-surface/50 mt-1">
+            Gasto manual. El real caducó el {fechaDeGasto(d.gasto.actualizado)}.
           </p>
         )}
         {d.questions.length > 0 && (
