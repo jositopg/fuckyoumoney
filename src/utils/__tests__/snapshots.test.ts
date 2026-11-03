@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AppData, WealthSnapshot } from '../../types'
-import { shouldTakeSnapshot, takeSnapshot } from '../snapshots'
+import { evolucionDe, fechaMadrid, netoDiario, serieParaGrafico, shouldTakeSnapshot, takeSnapshot } from '../snapshots'
 
 function makeAppData(overrides: Partial<AppData> = {}): AppData {
   return {
@@ -139,5 +139,99 @@ describe('takeSnapshot', () => {
     })
     const result = takeSnapshot(data)
     expect(result).toBe(data)
+  })
+})
+
+describe('evolución en porcentaje', () => {
+  it('arrastra el último valor cuando faltan días', () => {
+    const puntos = [
+      { fecha: '2026-01-01', valor: 100 },
+      { fecha: '2026-01-10', valor: 150 },
+    ]
+    const evo = evolucionDe(puntos, { hasta: '2026-01-10' })
+    expect(evo.variacion['1d']).toMatchObject({ desde: '2026-01-09', base: 100, actual: 150, porcentaje: 50 })
+
+    const recortada = evolucionDe(puntos, { desde: '2026-01-05', hasta: '2026-01-10' })
+    expect(recortada.serie.map((punto) => punto.fecha)).toEqual(['2026-01-10'])
+    expect(recortada.variacion['1d'].base).toBe(100)
+    expect(recortada.variacion['1d'].porcentaje).toBe(50)
+  })
+
+  it('no divide por cero', () => {
+    const evo = evolucionDe(
+      [
+        { fecha: '2026-01-01', valor: 0 },
+        { fecha: '2026-01-02', valor: 10 },
+      ],
+      { hasta: '2026-01-02' },
+    )
+    expect(evo.variacion['1d'].base).toBe(0)
+    expect(evo.variacion['1d'].porcentaje).toBeNull()
+    expect(evo.variacion['1d'].actual).toBe(10)
+  })
+
+  it('una posición creada a mitad de periodo no inventa una base', () => {
+    const evo = evolucionDe(
+      [
+        { fecha: '2026-06-15', valor: 100 },
+        { fecha: '2026-06-20', valor: 110 },
+      ],
+      { hasta: '2026-06-20' },
+    )
+    expect(evo.serie[0].fecha).toBe('2026-06-15')
+    expect(evo.variacion['1d']).toMatchObject({ desde: '2026-06-19', base: 100, actual: 110, porcentaje: 10 })
+    expect(evo.variacion['30d'].porcentaje).toBeNull()
+    expect(evo.variacion.ytd.porcentaje).toBeNull()
+    expect(evo.variacion['12m'].porcentaje).toBeNull()
+    expect(evo.variacion['12m'].desde).toBe('2025-06-20')
+  })
+
+  it('el mismo día se queda con el último valor y no duplica', () => {
+    const evo = evolucionDe(
+      [
+        { fecha: '2026-01-01', valor: 100 },
+        { fecha: '2026-01-01', valor: 80 },
+      ],
+      { hasta: '2026-01-01' },
+    )
+    expect(evo.serie).toEqual([{ fecha: '2026-01-01', valor: 80 }])
+    expect(evo.variacion['1d'].porcentaje).toBeNull()
+    expect(serieParaGrafico([
+      { fecha: '2026-01-01', valor: 100 },
+      { fecha: '2026-01-01', valor: 80 },
+    ])).toEqual([{ date: '2026-01-01', value: 80 }])
+  })
+
+  it('el 29 de febrero mira el 28 del año anterior', () => {
+    const evo = evolucionDe(
+      [
+        { fecha: '2023-02-28', valor: 100 },
+        { fecha: '2024-02-29', valor: 110 },
+      ],
+      { hasta: '2024-02-29' },
+    )
+    expect(evo.variacion['12m'].desde).toBe('2023-02-28')
+    expect(evo.variacion['12m'].porcentaje).toBe(10)
+  })
+
+  it('la fecha de la foto es el día en Madrid', () => {
+    expect(fechaMadrid(new Date('2026-01-15T23:30:00.000Z'))).toBe('2026-01-16')
+  })
+
+  it('el neto no cuenta como cero una posición que todavía no existe', () => {
+    const serie = netoDiario(
+      [
+        { position_id: 'a', kind: 'asset', fecha: '2026-01-01', valor: 100 },
+        { position_id: 'a', kind: 'asset', fecha: '2026-01-10', valor: 150 },
+        { position_id: 'b', kind: 'liability', fecha: '2026-01-10', valor: 40 },
+      ],
+      '2026-01-10',
+    )
+    const evo = evolucionDe(serie, { hasta: '2026-01-10' })
+    expect(evo.serie).toEqual([
+      { fecha: '2026-01-01', valor: 100 },
+      { fecha: '2026-01-10', valor: 110 },
+    ])
+    expect(evo.variacion['1d']).toMatchObject({ base: 100, actual: 110, porcentaje: 10 })
   })
 })

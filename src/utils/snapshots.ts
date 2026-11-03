@@ -1,6 +1,8 @@
 import type { AppData, WealthSnapshot } from '../types'
 import { getNetWorth, getLiquidAssets } from './calculations'
 
+export { evolucionDe, fechaMadrid, netoDiario, serieParaGrafico } from '../../lib/evolucion.js'
+
 function localYmd(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
