@@ -99,7 +99,7 @@ function bandCaption(target: MixTarget): string {
     : `Fondos ${funds.min}–${funds.max}% · ladrillo ${brick.min}–${brick.max}%`
 }
 
-export function MixPanel({ mix }: { mix: MixAnalysis }) {
+export function MixPanel({ mix, avisos }: { mix: MixAnalysis; avisos?: string[] }) {
   if (mix.totalAssets <= 0) return null
   const { target } = mix
   const shown = target.sleeves.filter(s => s.current > 0 || s.band)
@@ -135,6 +135,15 @@ export function MixPanel({ mix }: { mix: MixAnalysis }) {
       </div>
 
       <p className="text-label font-medium text-on-surface font-body leading-snug">{mix.line}</p>
+      {avisos && avisos.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {avisos.map((aviso) => (
+            <p key={aviso} className="text-label-sm font-body text-error leading-snug">
+              {aviso}
+            </p>
+          ))}
+        </div>
+      )}
       {target.fundsShortEur > 0 && mix.stance !== 'divest_brick' && (
         <p className="text-label-sm text-on-surface/50 font-body mt-1 tabular-nums">
           Para entrar en fondos: {formatEur(target.fundsShortEur, true)}
