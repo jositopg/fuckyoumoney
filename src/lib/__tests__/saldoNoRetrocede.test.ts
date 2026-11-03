@@ -53,10 +53,26 @@ const banco = vi.hoisted(() => {
 
   const assets: Fila[] = []
   const liabilities: Fila[] = []
+  const positionSnapshots: Fila[] = []
+  const fotos: Fila[] = []
   const escritos = new Map<string, { resultado: unknown }>()
   const ops: Operacion[] = []
   const sql: string[] = []
-  let foto: { assets: Fila[]; liabilities: Fila[]; escritos: [string, { resultado: unknown }][] } | null = null
+  let foto: {
+    assets: Fila[]
+    liabilities: Fila[]
+    escritos: [string, { resultado: unknown }][]
+    fotos: Fila[]
+  } | null = null
+
+  function diaMadrid(ahora = new Date()): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Madrid',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(ahora)
+  }
 
   const snapshot = {
     source: 'finca' as const,
@@ -95,6 +111,7 @@ const banco = vi.hoisted(() => {
   function tablas(nombre: string): Fila[] {
     if (nombre === 'assets') return assets
     if (nombre === 'liabilities') return liabilities
+    if (nombre === 'position_snapshots') return positionSnapshots
     throw new Error(`tabla no simulada: ${nombre}`)
   }
 
@@ -157,7 +174,15 @@ const banco = vi.hoisted(() => {
       const guardadas: Fila[] = []
       for (const entrada of entradas) {
         if (accion === 'upsert') {
-          const idx = filas.findIndex(fila => fila.id === entrada.id)
+          const idx =
+            entrada.id != null
+              ? filas.findIndex(fila => fila.id === entrada.id)
+              : filas.findIndex(
+                  fila =>
+                    fila.user_id === entrada.user_id &&
+                    fila.position_id === entrada.position_id &&
+                    fila.fecha === entrada.fecha,
+                )
           if (idx >= 0) {
             Object.assign(filas[idx], entrada)
             guardadas.push(filas[idx])
@@ -299,7 +324,12 @@ const banco = vi.hoisted(() => {
     const norm = text.replace(/\s+/g, ' ').trim().toLowerCase()
     sql.push(norm)
     if (norm === 'begin') {
-      foto = { assets: clonar(assets), liabilities: clonar(liabilities), escritos: [...escritos.entries()] }
+      foto = {
+        assets: clonar(assets),
+        liabilities: clonar(liabilities),
+        escritos: [...escritos.entries()],
+        fotos: clonar(fotos),
+      }
       return { rows: [], rowCount: 0 }
     }
     if (norm === 'commit') {
@@ -312,6 +342,7 @@ const banco = vi.hoisted(() => {
         liabilities.splice(0, liabilities.length, ...foto.liabilities)
         escritos.clear()
         for (const [clave, escrito] of foto.escritos) escritos.set(clave, escrito)
+        fotos.splice(0, fotos.length, ...foto.fotos)
         foto = null
       }
       return { rows: [], rowCount: 0 }
@@ -349,6 +380,36 @@ const banco = vi.hoisted(() => {
       fila.updated_at = new Date().toISOString()
       return { rows: [], rowCount: 1 }
     }
+    if (norm.startsWith('insert into position_snapshots')) {
+      const filaFoto: Fila = {
+        user_id: params[0],
+        position_id: params[1],
+        kind: params[2],
+        fecha: diaMadrid(),
+        valor: Number(params[3]),
+        participaciones: params[4] == null ? null : Number(params[4]),
+        precio_por_participacion: params[5] == null ? null : Number(params[5]),
+      }
+      const idx = fotos.findIndex(
+        fila => fila.user_id === filaFoto.user_id && fila.position_id === filaFoto.position_id && fila.fecha === filaFoto.fecha,
+      )
+      if (idx >= 0) Object.assign(fotos[idx], filaFoto)
+      else fotos.push(filaFoto)
+      return { rows: [], rowCount: 1 }
+    }
+    if (norm.includes('from position_snapshots')) {
+      const hasta = String(params[1]).slice(0, 10)
+      const positionId = params[2]
+      const rows = fotos
+        .filter(
+          fila =>
+            fila.user_id === params[0] &&
+            String(fila.fecha) <= hasta &&
+            (positionId == null || fila.position_id === positionId),
+        )
+        .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
+      return { rows, rowCount: rows.length }
+    }
     if (norm.includes('from assets a') || norm.includes('as clase')) {
       const rows = filasPosiciones()
       return { rows, rowCount: rows.length }
@@ -371,6 +432,8 @@ const banco = vi.hoisted(() => {
   function reset() {
     assets.splice(0, assets.length)
     liabilities.splice(0, liabilities.length)
+    positionSnapshots.splice(0, positionSnapshots.length)
+    fotos.splice(0, fotos.length)
     escritos.clear()
     ops.splice(0, ops.length)
     sql.splice(0, sql.length)
@@ -383,7 +446,24 @@ const banco = vi.hoisted(() => {
     return encontrada
   }
 
-  return { USER, CUENTA, DEUDA, FONDO, PISO, PISO_VIEJO, assets, liabilities, ops, sql, supabase, Cliente, reset, fila, snapshot }
+  return {
+    USER,
+    CUENTA,
+    DEUDA,
+    FONDO,
+    PISO,
+    PISO_VIEJO,
+    assets,
+    liabilities,
+    fotos,
+    ops,
+    sql,
+    supabase,
+    Cliente,
+    reset,
+    fila,
+    snapshot,
+  }
 })
 
 vi.mock('../supabase', () => ({ supabase: banco.supabase, isSupabaseConfigured: true }))
@@ -439,9 +519,12 @@ interface PosicionLeida {
 interface CuerpoPatrimonio {
   escrito?: boolean
   repetida?: boolean
+  vistaPrevia?: boolean
   error?: string
   posiciones?: PosicionLeida[]
-  posicion?: { valor: number }
+  posicion?: { id?: string; nombre?: string; valor?: number }
+  serie?: { fecha: string; valor: number }[]
+  variacion?: { '1d': { porcentaje: number | null } }
 }
 
 function crearRespuesta(): RespuestaHttp {
@@ -651,7 +734,8 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(escrituras.some(op => op.filters.some(filtro => filtro.col === 'updated_at' && filtro.value === LEIDO))).toBe(
       true,
     )
-    expect(banco.ops.some(op => op.op === 'upsert')).toBe(false)
+    expect(banco.ops.some(op => op.table === 'assets' && op.op === 'upsert')).toBe(false)
+    expect(banco.ops.some(op => op.table === 'position_snapshots' && op.op === 'upsert')).toBe(true)
   })
 
   it('un cliente con baseUpdatedAt antiguo no sobrescribe y devuelve la fila de la nube', async () => {
@@ -709,6 +793,8 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(SALDO)
     expect(banco.fila('liabilities', banco.DEUDA).balance).toBe(5000)
     expect(banco.fila('assets', banco.CUENTA).updated_at).toBe(NUBE)
+    expect(banco.ops.filter(op => op.table === 'position_snapshots')).toEqual([])
+    expect(banco.fotos).toEqual([])
   })
 
   it('migrateLocalToSupabaseIfNeeded con datos locales viejos deja ganar a la nube más reciente', async () => {
@@ -840,5 +926,40 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(banco.ops.length).toBe(opsAntes)
     expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(SALDO)
     expect(metadataDe(banco.fila('assets', banco.CUENTA)).lastInterestUpdate).toBe(marca)
+  })
+
+  it('la foto del día no se duplica y la evolución no escribe', async () => {
+    sembrarCuenta(100, NUBE)
+    const primera = await postPatrimonio({
+      herramienta: 'fijar_valor',
+      argumentos: { posicion: 'Cuenta prueba', valor: '200', confirmar: true, clave: 'foto-dia-0001' },
+    })
+    const segunda = await postPatrimonio({
+      herramienta: 'fijar_valor',
+      argumentos: { posicion: 'Cuenta prueba', valor: '250', confirmar: true, clave: 'foto-dia-0002' },
+    })
+    expect(primera.codigo).toBe(200)
+    expect(segunda.codigo).toBe(200)
+    expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(250)
+    const delDia = banco.fotos.filter(fila => fila.position_id === banco.CUENTA)
+    expect(delDia).toHaveLength(1)
+    expect(delDia[0]?.valor).toBe(250)
+
+    const updates = banco.sql.filter(texto => texto.startsWith('update assets')).length
+    const lectura = await postPatrimonio({ herramienta: 'evolucion', argumentos: { posicion: 'Cuenta prueba' } })
+    expect(lectura.codigo).toBe(200)
+    expect(lectura.cuerpo.posicion).toMatchObject({ id: banco.CUENTA, nombre: 'Cuenta prueba' })
+    expect(lectura.cuerpo.serie).toHaveLength(1)
+    expect(lectura.cuerpo.serie?.[0]?.valor).toBe(250)
+    expect(lectura.cuerpo.variacion?.['1d'].porcentaje).toBeNull()
+    expect(banco.sql.filter(texto => texto.startsWith('update assets')).length).toBe(updates)
+
+    const vista = await postPatrimonio({
+      herramienta: 'fijar_valor',
+      argumentos: { posicion: 'Cuenta prueba', valor: '1', confirmar: false },
+    })
+    expect(vista.cuerpo.vistaPrevia).toBe(true)
+    expect(banco.fotos.filter(fila => fila.position_id === banco.CUENTA)).toHaveLength(1)
+    expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(250)
   })
 })

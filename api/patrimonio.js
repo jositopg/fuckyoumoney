@@ -3,6 +3,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
+import { evolucionDe, fechaMadrid, netoDiario } from '../lib/evolucion.js'
 import {
   PatrimonioError,
   esEscritura,
@@ -11,6 +12,7 @@ import {
   notasConInteres,
   notasConParche,
   participacionesDe,
+  planEvolucion,
   planificar,
   precioUnitario,
   responderEscritura,
@@ -237,6 +239,7 @@ async function aplicar(cliente, userId, nombre, args) {
       JSON.stringify(orden.resultado),
     ])
     await cliente.query('commit')
+    await guardarFoto(cliente, userId, fotoDeOrden(orden, posiciones))
     return orden.resultado
   } catch (err) {
     await cliente.query('rollback')
@@ -323,6 +326,76 @@ async function escribirDetalle(cliente, userId, posiciones, orden) {
   if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa posición.')
 }
 
+const SQL_FOTO = `insert into position_snapshots (user_id, position_id, kind, fecha, valor, participaciones, precio_por_participacion)
+values ($1, $2, $3, (timezone('Europe/Madrid', now()))::date, $4::numeric, $5::numeric, $6::numeric)
+on conflict (user_id, position_id, fecha) do update set
+  valor = excluded.valor,
+  participaciones = excluded.participaciones,
+  precio_por_participacion = excluded.precio_por_participacion,
+  kind = excluded.kind`
+
+const SQL_SERIE = `select position_id, kind, fecha::text as fecha, valor, participaciones, precio_por_participacion
+from position_snapshots
+where user_id = $1 and fecha <= $2::date
+  and ($3::uuid is null or position_id = $3::uuid)
+order by fecha`
+
+function numeroFoto(valor) {
+  const n = Number(valor)
+  return Number.isFinite(n) ? n : null
+}
+
+function fotoDeOrden(orden, posiciones) {
+  if (orden.crear) {
+    const id = orden.resultado?.posicion?.id
+    const valor = numeroFoto(orden.crear.valor)
+    if (!id || valor == null) return null
+    const kind = orden.crear.clase === 'deuda' || orden.crear.clase === 'hipoteca' ? 'liability' : 'asset'
+    return { id, kind, valor, participaciones: null, precio: null }
+  }
+  const posicion = posiciones.find((p) => p.id === orden.id)
+  const valor = numeroFoto(orden.detalle ? posicion?.valor : orden.valor)
+  if (!orden.id || valor == null) return null
+  const enviadas =
+    orden.detalle && orden.metadata && Object.prototype.hasOwnProperty.call(orden.metadata, 'participaciones')
+  const shares = numeroFoto(enviadas ? orden.metadata.participaciones : participacionesDe(posicion))
+  const participaciones = shares != null && shares > 0 ? shares : null
+  const precio = participaciones != null ? (precioUnitario(valor, participaciones) ?? null) : null
+  return { id: orden.id, kind: orden.kind === 'liability' ? 'liability' : 'asset', valor, participaciones, precio }
+}
+
+async function guardarFoto(cliente, userId, foto) {
+  if (!foto) return
+  try {
+    await cliente.query(SQL_FOTO, [userId, foto.id, foto.kind, foto.valor, foto.participaciones, foto.precio])
+  } catch (err) {
+    console.error('No se ha guardado la foto del día.', mensajeSeguro(err))
+  }
+}
+
+async function leerEvolucion(cliente, userId, args) {
+  const posiciones = await posicionesDe(cliente, userId)
+  const plan = planEvolucion(args, posiciones, fechaMadrid())
+  const filas = await cliente.query(SQL_SERIE, [userId, plan.hasta, plan.posicionId])
+  const puntos = filas.rows.map((fila) => ({
+    position_id: fila.position_id,
+    kind: fila.kind,
+    fecha: String(fila.fecha).slice(0, 10),
+    valor: Number(fila.valor),
+    participaciones: fila.participaciones == null ? null : Number(fila.participaciones),
+    precioPorParticipacion: fila.precio_por_participacion == null ? null : Number(fila.precio_por_participacion),
+  }))
+  const crudo = plan.posicionId ? puntos : netoDiario(puntos, plan.hasta)
+  const evo = evolucionDe(crudo, { desde: plan.desde, hasta: plan.hasta })
+  return {
+    posicion: plan.posicion ? { id: plan.posicion.id, nombre: plan.posicion.nombre } : null,
+    desde: plan.desde ?? evo.serie[0]?.fecha ?? plan.hasta,
+    hasta: plan.hasta,
+    serie: evo.serie,
+    variacion: evo.variacion,
+  }
+}
+
 async function ejecutar(cliente, userId, nombre, args) {
   if (nombre === 'patrimonio') {
     const fila = await cliente.query('select patrimonio_ia() as snap')
@@ -332,6 +405,7 @@ async function ejecutar(cliente, userId, nombre, args) {
     const posiciones = await posicionesDe(cliente, userId)
     return { posiciones: posiciones.map(fichaPublica) }
   }
+  if (nombre === 'evolucion') return leerEvolucion(cliente, userId, args)
   if (esEscritura(nombre)) return aplicar(cliente, userId, nombre, args)
   throw new PatrimonioError(`No existe la herramienta "${nombre}".`)
 }
@@ -382,7 +456,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio y posiciones leen. fijar_valor, fijar_detalle y crear_posicion no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. Los inmuebles de Finca no se editan aquí.',
+              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle y crear_posicion no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. Los inmuebles de Finca no se editan aquí.',
           },
         }
       }

@@ -197,6 +197,39 @@ export interface Database {
         }
         Relationships: []
       }
+      position_snapshots: {
+        Row: {
+          user_id: string
+          position_id: string
+          kind: 'asset' | 'liability'
+          fecha: string
+          valor: number
+          participaciones: number | null
+          precio_por_participacion: number | null
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          position_id: string
+          kind: 'asset' | 'liability'
+          fecha: string
+          valor: number
+          participaciones?: number | null
+          precio_por_participacion?: number | null
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          position_id?: string
+          kind?: 'asset' | 'liability'
+          fecha?: string
+          valor?: number
+          participaciones?: number | null
+          precio_por_participacion?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

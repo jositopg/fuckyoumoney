@@ -22,7 +22,7 @@ npm run wealth    # briefing JSON del patrimonio, para esta terminal
 Un cambio no está listo hasta que `npx vitest run`, lint y build salen limpios. Merge a `main` solo con build y test verdes.
 
 - Serverless: `api/sync-finca.js` (ingesta de inmuebles). No hay chat en la app.
-- SQL: `supabase/migrations/001_wealth_os.sql` con `~/.fuckyoumoney-db.env`.
+- SQL: `supabase/migrations/` (última `014_position_snapshots.sql`) con `~/.fuckyoumoney-db.env`.
 
 ## Carpetas
 
@@ -67,7 +67,9 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `https://fuckyoumoney.vercel.app/api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. El token está en `~/.fuckyoumoney-db.env`, fuera del repo. GET lista las herramientas. POST acepta `{ "herramienta", "argumentos" }` o un mensaje MCP.
 
-Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+
+`evolucion` no escribe. `posicion` es opcional (nombre o id, también un inmueble de Finca). Sin ella la serie es el neto. `desde` y `hasta` son `AAAA-MM-DD`. La respuesta trae `serie` y `variacion` (`1d`, `30d`, `ytd`, `12m`), cada una con `porcentaje`, `base`, `actual` y `desde`.
 
 `fijar_detalle` acepta `posicion` y `campos`. Solo actualiza las claves enviadas (merge de `metadata` y de las notas `FYM1`, sin borrar el resto). Lista blanca: `participaciones`, `precioPorParticipacion`, `precioMedioCompra`, `costeFiscalTotal`, `fechaCompra` (`AAAA-MM-DD`), `isin` (12 caracteres y dígito de control), `aportacionImporte`, `aportacionFrecuencia` (`mensual|trimestral|anual`), `aportacionAnual`, `cuotaMensual`, `tipoInteres`, `plazoMeses`, `fechaFin`, `ingresoMensualNeto`, `pagasAnuales` (`12|14`), `institucion`, `broker`. Un campo desconocido, un negativo, una fecha imposible o un ISIN inválido es un error.
 
@@ -121,6 +123,7 @@ El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies fi
 - Inmuebles de Finca no se editan ni se borran desde el formulario; los regenera el sync. El sync es automático; el error sale en portada; el botón está en Ajustes.
 - Preguntas del veredicto: gasto o colchón → Ajustes; idle o apartado sin motivo → editar esa cuenta. Un movimiento `deploy` abre el efectivo parado.
 - Al cargar, la nube gana. Solo se sube una fila que ya existe si este dispositivo la tiene pendiente (`dirty`) y su `updatedAt` es posterior. Una fila que aún no está en la nube sí se sube. `saveCloudAsset` actualiza con el `updated_at` leído; si no afecta a ninguna fila, recarga esa ficha y no la pisa. El service worker (`fym-v14`) pide los JS a la red antes que a la caché. Un deploy no puede borrar inversiones. Si falla el delete en la nube, no se borra en local.
+- Foto diaria: `position_snapshots`, una fila por usuario, posición y día en Europe/Madrid (la última escritura sustituye el valor; `created_at` se queda). Se apunta al guardar desde la app o al confirmar `fijar_valor`, `fijar_detalle` o `crear_posicion`. Si la foto falla, el saldo sí queda. No apunta una vista previa, una clave repetida, un conflicto de `updated_at` ni una fila de Finca. El sync de Finca no escribe esa foto. No hay histórico inventado: el backfill de la 014 solo inserta el valor de hoy. El porcentaje es `(actual − base) / base × 100`. Base 0 o sin foto anterior → `porcentaje: null`. No interpola: el valor de un día es la última foto con fecha anterior o igual. `assets.quantity = 1` no son participaciones. RLS: `auth.uid() = user_id`. La API usa postgres y no pasa por esa política. El gráfico mensual de la portada (`takeSnapshot`) sigue en local.
 
 ## No tocar
 
@@ -137,3 +140,4 @@ La app ya está en producción. Tras cada commit: `git push` sin preguntar.
 - Sin `~/.fuckyoumoney-db.env` no se leen cuentas, deudas ni fondos desde SQL (el inmobiliario sí, vía Finca).
 - El principal hipotecario no viene de Finca.
 - El login de la app no se prueba desde el agente.
+- La foto diaria no se toma cuando Finca sincroniza un inmueble, ni en la migración local de un usuario que aún no tiene filas. Entra con el backfill de hoy o en el siguiente guardado desde la app.

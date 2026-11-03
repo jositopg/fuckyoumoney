@@ -1,4 +1,5 @@
 import type { Asset } from '../types'
+import { fechaMadrid } from '../../lib/evolucion.js'
 import { supabase } from './supabase'
 import {
   dbAssetToLocal,
@@ -211,7 +212,7 @@ async function guardarActivo(row: AssetInsert, userId: string, id: string, baseU
       .select('*')
       .maybeSingle()
     if (error) throw new Error(formatCloudError(error))
-    if (data) return dbAssetToLocal(data)
+    if (data) return conFoto(dbAssetToLocal(data), userId)
 
     const current = await supabase.from('assets').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
     if (current.error) throw new Error(formatCloudError(current.error))
@@ -220,7 +221,7 @@ async function guardarActivo(row: AssetInsert, userId: string, id: string, baseU
 
   const { data, error } = await supabase.from('assets').upsert(row, { onConflict: 'id' }).select('*').single()
   if (error) throw new Error(formatCloudError(error))
-  return dbAssetToLocal(data)
+  return conFoto(dbAssetToLocal(data), userId)
 }
 
 async function guardarDeuda(row: LiabilityInsert, userId: string, id: string, baseUpdatedAt?: string): Promise<Asset> {
@@ -235,7 +236,7 @@ async function guardarDeuda(row: LiabilityInsert, userId: string, id: string, ba
       .select('*')
       .maybeSingle()
     if (error) throw new Error(formatCloudError(error))
-    if (data) return dbLiabilityToLocal(data)
+    if (data) return conFoto(dbLiabilityToLocal(data), userId)
 
     const current = await supabase.from('liabilities').select('*').eq('id', id).eq('user_id', userId).maybeSingle()
     if (current.error) throw new Error(formatCloudError(current.error))
@@ -244,7 +245,49 @@ async function guardarDeuda(row: LiabilityInsert, userId: string, id: string, ba
 
   const { data, error } = await supabase.from('liabilities').upsert(row, { onConflict: 'id' }).select('*').single()
   if (error) throw new Error(formatCloudError(error))
-  return dbLiabilityToLocal(data)
+  return conFoto(dbLiabilityToLocal(data), userId)
+}
+
+function titulosDe(asset: Asset): { participaciones: number | null; precio: number | null } {
+  const meta = asset.metadata
+  const crudo = meta && 'participaciones' in meta ? Number(meta.participaciones) : Number.NaN
+  const participaciones = Number.isFinite(crudo) && crudo > 0 ? crudo : null
+  const valor = Number(asset.value)
+  if (participaciones == null || !(valor > 0)) return { participaciones, precio: null }
+  const declarado = meta && 'pricePerUnit' in meta ? Number(meta.pricePerUnit) : Number.NaN
+  const precio = Number.isFinite(declarado) && declarado > 0 ? declarado : valor / participaciones
+  return { participaciones, precio: Math.round(precio * 10000) / 10000 }
+}
+
+async function guardarFotoDia(asset: Asset, userId: string): Promise<void> {
+  if (!supabase || !isUuid(asset.id) || !isUuid(userId)) return
+  if (asset.readOnly || asset.source === 'finca') return
+  const valor = Number(asset.value)
+  if (!Number.isFinite(valor)) return
+  const { participaciones, precio } = titulosDe(asset)
+  try {
+    const { error } = await supabase.from('position_snapshots').upsert(
+      {
+        user_id: userId,
+        position_id: asset.id,
+        kind: asset.category === 'debt' ? 'liability' : 'asset',
+        fecha: fechaMadrid(),
+        valor,
+        participaciones,
+        precio_por_participacion: precio,
+      },
+      { onConflict: 'user_id,position_id,fecha' },
+    )
+    if (error) console.warn('No se ha guardado la foto del día.', error.message)
+  } catch (err) {
+    const texto = err instanceof Error ? err.message : String(err)
+    console.warn('No se ha guardado la foto del día.', texto.replace(/postgres(?:ql)?:\/\/\S+/gi, 'postgres://…'))
+  }
+}
+
+async function conFoto(asset: Asset, userId: string): Promise<Asset> {
+  await guardarFotoDia(asset, userId)
+  return asset
 }
 
 /** Insert or update. Invalid local ids are replaced with a uuid. */
