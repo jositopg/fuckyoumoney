@@ -3,7 +3,19 @@ import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
-import { PatrimonioError, esEscritura, herramientas, notasConInteres, planificar, sinSecretos } from '../lib/patrimonio-logica.js'
+import {
+  PatrimonioError,
+  esEscritura,
+  fichaDe,
+  herramientas,
+  notasConInteres,
+  notasConParche,
+  participacionesDe,
+  planificar,
+  precioUnitario,
+  responderEscritura,
+  sinSecretos,
+} from '../lib/patrimonio-logica.js'
 
 const { Client, types } = pg
 types.setTypeParser(1082, (valor) => valor)
@@ -65,11 +77,14 @@ async function leerCuerpo(req) {
 const SQL_POSICIONES = `
 select a.id, a.user_id, a.name, a.type::text as clase, 'asset'::text as kind,
        coalesce(nullif(a.manual_value, 0), a.quantity * coalesce(a.purchase_price, 0), 0) as valor,
-       a.source, a.institution, a.read_only, a.metadata, a.notes, a.quantity
+       a.source, a.institution, a.read_only, a.metadata, a.notes, a.quantity,
+       null::numeric as monthly_payment, null::numeric as interest_rate, null::date as end_date,
+       a.purchase_date, a.purchase_price
 from assets a
 union all
 select l.id, l.user_id, l.name, l.type::text, 'liability'::text,
-       l.balance, l.source, l.institution, false, coalesce(l.metadata, '{}'::jsonb), l.notes, null
+       l.balance, l.source, l.institution, false, coalesce(l.metadata, '{}'::jsonb), l.notes, null::numeric,
+       l.monthly_payment, l.interest_rate, l.end_date, null::date, null::numeric
 from liabilities l
 `
 
@@ -98,19 +113,18 @@ function trozosDe(fila) {
     quantity: Number.isFinite(quantity) ? quantity : undefined,
     metadata: meta,
     notes: typeof fila.notes === 'string' ? fila.notes : null,
+    columnas: {
+      monthlyPayment: fila.monthly_payment == null ? undefined : Number(fila.monthly_payment),
+      interestRate: fila.interest_rate == null ? undefined : Number(fila.interest_rate),
+      endDate: fila.end_date || undefined,
+      purchaseDate: fila.purchase_date || undefined,
+      purchasePrice: fila.purchase_price == null ? undefined : Number(fila.purchase_price),
+    },
   }
 }
 
 function fichaPublica(p) {
-  return {
-    id: p.id,
-    nombre: p.nombre,
-    clase: p.clase,
-    kind: p.kind,
-    valor: Math.round(p.valor * 100) / 100,
-    source: p.source ?? 'manual',
-    soloLectura: p.readOnly,
-  }
+  return fichaDe(p)
 }
 
 async function conCliente(fn) {
@@ -147,16 +161,20 @@ const CREAR_TABLA = `create table if not exists agente_escrituras (
 async function aplicar(cliente, userId, nombre, args) {
   const posiciones = await posicionesDe(cliente, userId)
   const orden = planificar(nombre, args, posiciones)
-  if (!orden.confirmar) return orden.vista
+  const sinConfirmar = responderEscritura(orden, null)
+  if (!sinConfirmar.escribir) return sinConfirmar.cuerpo
   await cliente.query('begin')
   try {
     await cliente.query(CREAR_TABLA)
     const previa = await cliente.query('select resultado from agente_escrituras where clave = $1', [orden.clave])
-    if (previa.rows[0]?.resultado) {
+    const decision = responderEscritura(orden, previa.rows[0]?.resultado ?? null)
+    if (!decision.escribir) {
       await cliente.query('commit')
-      return { ...previa.rows[0].resultado, repetida: true }
+      return decision.cuerpo
     }
-    if (orden.kind) {
+    if (orden.detalle) {
+      await escribirDetalle(cliente, userId, posiciones, orden)
+    } else if (orden.kind) {
       if (orden.kind === 'liability') {
         const hecho = await cliente.query(
           `update liabilities set balance = $1, updated_at = now() where id = $2 and user_id = $3`,
@@ -236,9 +254,73 @@ function notasDe(posiciones, id) {
 }
 
 function precio(posiciones, id, valor) {
-  const quantity = posiciones.find((p) => p.id === id)?.quantity
-  if (!quantity || quantity <= 0 || valor <= 0) return {}
-  return { pricePerUnit: Math.round((valor / quantity) * 10000) / 10000 }
+  const unit = precioUnitario(valor, participacionesDe(posiciones.find((p) => p.id === id)))
+  return unit == null ? {} : { pricePerUnit: unit }
+}
+
+async function escribirDetalle(cliente, userId, posiciones, orden) {
+  const notes = notasConParche(notasDe(posiciones, orden.id), orden.notas)
+  const c = orden.columnas
+  if (orden.kind === 'liability') {
+    const hecho = await cliente.query(
+      `update liabilities
+          set metadata = coalesce(metadata, '{}'::jsonb) || $1::jsonb,
+              notes = $2,
+              institution = case when $3::boolean then $4::text else institution end,
+              monthly_payment = case when $5::boolean then $6::numeric else monthly_payment end,
+              interest_rate = case when $7::boolean then $8::numeric else interest_rate end,
+              end_date = case when $9::boolean then $10::date else end_date end,
+              updated_at = now()
+        where id = $11 and user_id = $12
+          and coalesce(source, '') <> 'finca'
+          and coalesce(institution, '') <> 'finca'`,
+      [
+        JSON.stringify(orden.metadata),
+        notes,
+        c.institution != null,
+        c.institution ?? null,
+        c.monthlyPayment != null,
+        c.monthlyPayment ?? null,
+        c.interestRate != null,
+        c.interestRate ?? null,
+        c.endDate != null,
+        c.endDate ?? null,
+        orden.id,
+        userId,
+      ],
+    )
+    if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa deuda.')
+    return
+  }
+  const hecho = await cliente.query(
+    `update assets
+        set metadata = coalesce(metadata, '{}'::jsonb) || $1::jsonb,
+            notes = $2,
+            institution = case when $3::boolean then $4::text else institution end,
+            quantity = case when $5::boolean then $6::numeric else quantity end,
+            purchase_price = case when $7::boolean then $8::numeric else purchase_price end,
+            purchase_date = case when $9::boolean then $10::date else purchase_date end,
+            updated_at = now()
+      where id = $11 and user_id = $12
+        and coalesce(source, '') <> 'finca'
+        and read_only is not true
+        and coalesce(institution, '') <> 'finca'`,
+    [
+      JSON.stringify(orden.metadata),
+      notes,
+      c.institution != null,
+      c.institution ?? null,
+      c.quantity != null,
+      c.quantity ?? null,
+      c.purchasePrice != null,
+      c.purchasePrice ?? null,
+      c.purchaseDate != null,
+      c.purchaseDate ?? null,
+      orden.id,
+      userId,
+    ],
+  )
+  if ((hecho.rowCount ?? 0) === 0) throw new PatrimonioError('No se ha podido actualizar esa posición.')
 }
 
 async function ejecutar(cliente, userId, nombre, args) {
@@ -300,7 +382,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio y posiciones leen. fijar_valor y crear_posicion no guardan nada sin confirmar:true y una clave. Los inmuebles de Finca no se editan aquí.',
+              'Patrimonio declarado de Jose. patrimonio y posiciones leen. fijar_valor, fijar_detalle y crear_posicion no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. Los inmuebles de Finca no se editan aquí.',
           },
         }
       }

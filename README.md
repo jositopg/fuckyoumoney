@@ -30,3 +30,26 @@ Arquitectura: `AGENTS.md`. Schema: `supabase/README.md`.
 npx vitest run
 npm run build
 ```
+
+## API del patrimonio
+
+`GET/POST /api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`. Sin `confirmar: true` no escribe.
+
+`fijar_detalle` cambia solo los campos enviados. `institucion` pasa a la columna `institution` (en un fondo, también es el broker). `cuotaMensual` queda en `metadata.monthlyPayment`. La nómina (`ingresoMensualNeto`, `pagasAnuales` 12 o 14) se guarda en la posición y no entra en el neto. Una aportación anual a pensión por encima de 1.500 € avisa. El detalle está en `AGENTS.md`.
+
+Vista previa, no escribe:
+
+```json
+{
+  "herramienta": "fijar_detalle",
+  "argumentos": {
+    "posicion": "Vanguard FTSE All world (ING)",
+    "campos": {
+      "participaciones": 120.5,
+      "isin": "IE00BK5BQT80",
+      "institucion": "ING"
+    },
+    "confirmar": false
+  }
+}
+```

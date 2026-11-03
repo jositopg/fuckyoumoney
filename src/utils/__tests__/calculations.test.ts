@@ -9,7 +9,9 @@ import {
   getTotalPositiveAssets,
   getAutonomyMonths,
   getDebtRatio,
+  getTotalMonthlyDebtPayments,
 } from '../calculations'
+import { diagnoseWealth } from '../moneyDiagnosis'
 
 // --- Test helpers ---
 function makeAsset(overrides: Partial<Asset> & { category: Asset['category']; value: number }): Asset {
@@ -286,5 +288,20 @@ describe('getDebtRatio', () => {
   it('returns 0 when no debt', () => {
     const assets = [makeAsset({ category: 'cash', value: 5000 })]
     expect(getDebtRatio(assets)).toBe(0)
+  })
+})
+
+describe('getTotalMonthlyDebtPayments', () => {
+  it('suma la cuota mensual y el diagnóstico la usa en el flujo de caja', () => {
+    const assets = [
+      makeAsset({
+        category: 'debt',
+        name: 'Préstamo',
+        value: 9000,
+        metadata: { monthlyPayment: 450 },
+      }),
+    ]
+    expect(getTotalMonthlyDebtPayments(assets)).toBe(450)
+    expect(diagnoseWealth(assets, 1000, 6).cashflow.monthlyDebtPayments).toBe(450)
   })
 })

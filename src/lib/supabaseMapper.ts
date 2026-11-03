@@ -173,6 +173,8 @@ export function localAssetToDbInsert(
         availableFrom: meta?.availableFrom,
         lastInterestUpdate: meta?.lastInterestUpdate,
         slices: meta?.slices,
+        ingresoMensualNeto: meta?.ingresoMensualNeto,
+        pagasAnuales: meta?.pagasAnuales,
       }
       return {
         ...base,
@@ -200,14 +202,22 @@ export function localAssetToDbInsert(
         isin: meta?.isin,
         resolvedTicker: meta?.resolvedTicker,
         canAutoUpdate: meta?.canAutoUpdate,
+        participaciones: meta?.participaciones,
+        precioPorParticipacion: meta?.precioPorParticipacion,
+        precioMedioCompra: meta?.precioMedioCompra,
+        costeFiscalTotal: meta?.costeFiscalTotal,
+        fechaCompra: meta?.fechaCompra,
+        aportacionImporte: meta?.aportacionImporte,
+        aportacionFrecuencia: meta?.aportacionFrecuencia,
       }
       return {
         ...base,
         type: mapStockTypeStrict(meta?.assetType),
         ticker,
         ticker_source: ticker ? 'yahoo' : null,
-        quantity,
-        purchase_price: meta?.purchasePrice ?? null,
+        quantity: meta?.participaciones && meta.participaciones > 0 ? meta.participaciones : quantity,
+        ...(meta?.fechaCompra ? { purchase_date: meta.fechaCompra } : {}),
+        purchase_price: meta?.purchasePrice ?? meta?.precioMedioCompra ?? null,
         manual_value: asset.value,
         is_liquid: true,
         institution: meta?.broker ?? null,
@@ -258,6 +268,11 @@ export function localAssetToDbInsert(
         ticker: null,
         ticker_source: null,
         purchase_price: null,
+        notes: packNotes(asset.notes, {
+          aportacionAnual: meta?.aportacionAnual,
+          aportacionImporte: meta?.aportacionImporte,
+          aportacionFrecuencia: meta?.aportacionFrecuencia,
+        }),
       }
     }
     case 'vehicles': {
@@ -348,7 +363,7 @@ export function localDebtToLiabilityInsert(
     monthly_payment: meta?.monthlyPayment ?? null,
     end_date: meta?.dueDate ?? null,
     currency: 'EUR',
-    notes: asset.notes ?? null,
+    notes: packNotes(asset.notes, meta?.plazoMeses != null ? { plazoMeses: meta.plazoMeses } : null),
     is_current: true,
     created_at: asset.createdAt || new Date().toISOString(),
     updated_at: asset.updatedAt || new Date().toISOString(),
@@ -399,6 +414,8 @@ export function dbAssetToLocal(row: AssetRow): Asset {
             ? { lastInterestUpdate: extra.lastInterestUpdate }
             : {}),
           ...(slices ? { slices } : {}),
+          ...(typeof extra.ingresoMensualNeto === 'number' ? { ingresoMensualNeto: extra.ingresoMensualNeto } : {}),
+          ...(extra.pagasAnuales === 12 || extra.pagasAnuales === 14 ? { pagasAnuales: extra.pagasAnuales } : {}),
         } satisfies CashMetadata,
         createdAt: created,
         updatedAt: now,
@@ -409,6 +426,10 @@ export function dbAssetToLocal(row: AssetRow): Asset {
     case 'bond': {
       const { human, extra } = unpackNotes(row.notes)
       const guessed = inferInvestment(row.name, row.ticker ?? undefined, human)
+      const participaciones =
+        typeof extra.participaciones === 'number' && extra.participaciones > 0 ? extra.participaciones : undefined
+      const quantity = participaciones ?? row.quantity
+      const frecuencias = ['mensual', 'trimestral', 'anual'] as const
       const kinds = ['accion', 'etf', 'fondo_indexado', 'fondo_activo', 'otro'] as const
       const regions = ['world', 'us', 'europe', 'em', 'spain', 'asia', 'mixed'] as const
       const classes = ['equity', 'bonds', 'mixed', 'money_market', 'commodity', 'real_estate'] as const
@@ -429,9 +450,20 @@ export function dbAssetToLocal(row: AssetRow): Asset {
             ? (extra.assetType as StocksMetadata['assetType'])
             : guessed.assetType || reverseStockType(row.type),
           identifierType: extra.identifierType === 'isin' ? 'isin' : extra.identifierType === 'ticker' ? 'ticker' : undefined,
-          quantity: row.quantity,
-          purchasePrice: row.purchase_price ?? undefined,
-          pricePerUnit: row.quantity > 0 && value > 0 ? value / row.quantity : undefined,
+          quantity,
+          ...(participaciones ? { participaciones } : {}),
+          purchasePrice: row.purchase_price ?? (typeof extra.precioMedioCompra === 'number' ? extra.precioMedioCompra : undefined),
+          precioMedioCompra: typeof extra.precioMedioCompra === 'number' ? extra.precioMedioCompra : undefined,
+          costeFiscalTotal: typeof extra.costeFiscalTotal === 'number' ? extra.costeFiscalTotal : undefined,
+          fechaCompra:
+            (typeof extra.fechaCompra === 'string' ? extra.fechaCompra : undefined) || row.purchase_date || undefined,
+          aportacionImporte: typeof extra.aportacionImporte === 'number' ? extra.aportacionImporte : undefined,
+          aportacionFrecuencia: frecuencias.includes(extra.aportacionFrecuencia as (typeof frecuencias)[number])
+            ? (extra.aportacionFrecuencia as StocksMetadata['aportacionFrecuencia'])
+            : undefined,
+          precioPorParticipacion:
+            typeof extra.precioPorParticipacion === 'number' ? extra.precioPorParticipacion : undefined,
+          pricePerUnit: quantity > 0 && value > 0 ? value / quantity : undefined,
           canAutoUpdate: extra.canAutoUpdate === false ? false : Boolean(row.ticker || guessed.ticker),
           resolvedTicker: typeof extra.resolvedTicker === 'string' ? extra.resolvedTicker : row.ticker ?? undefined,
           isin: typeof extra.isin === 'string' ? extra.isin : guessed.isin,
@@ -485,19 +517,27 @@ export function dbAssetToLocal(row: AssetRow): Asset {
         updatedAt: now,
       }
     }
-    case 'pension':
+    case 'pension': {
+      const { human, extra } = unpackNotes(row.notes)
+      const frecuencias = ['mensual', 'trimestral', 'anual'] as const
       return {
         id: row.id,
         category: 'pension',
         name: row.name,
         value,
-        notes: row.notes ?? undefined,
+        notes: human,
         metadata: {
           manager: row.institution ?? undefined,
+          ...(typeof extra.aportacionAnual === 'number' ? { aportacionAnual: extra.aportacionAnual } : {}),
+          ...(typeof extra.aportacionImporte === 'number' ? { aportacionImporte: extra.aportacionImporte } : {}),
+          ...(frecuencias.includes(extra.aportacionFrecuencia as (typeof frecuencias)[number])
+            ? { aportacionFrecuencia: extra.aportacionFrecuencia as PensionMetadata['aportacionFrecuencia'] }
+            : {}),
         } satisfies PensionMetadata,
         createdAt: created,
         updatedAt: now,
       }
+    }
     case 'real_estate': {
       const { human, extra } = unpackNotes(row.notes)
       const fromFinca = row.institution === 'finca' || extra.source === 'finca'
@@ -604,17 +644,19 @@ export function dbAssetToLocal(row: AssetRow): Asset {
  * Convert a DB liability row to a local debt Asset.
  */
 export function dbLiabilityToLocal(row: LiabilityRow): Asset {
+  const { human, extra } = unpackNotes(row.notes)
   return {
     id: row.id,
     category: 'debt',
     name: row.name,
     value: row.balance,
-    notes: row.notes ?? undefined,
+    notes: human,
     metadata: {
       debtType: reverseDebtType(row.type),
       interestRate: row.interest_rate ?? undefined,
       monthlyPayment: row.monthly_payment ?? undefined,
       dueDate: row.end_date ?? undefined,
+      ...(typeof extra.plazoMeses === 'number' ? { plazoMeses: extra.plazoMeses } : {}),
     } satisfies DebtMetadata,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),

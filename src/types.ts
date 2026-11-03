@@ -45,6 +45,10 @@ export interface CashMetadata {
   availableFrom?: string
   /** Split of this account. Remainder of value − slices = a invertir. */
   slices?: CashSlice[]
+  /** Nómina neta de un mes, en la cuenta. No entra en el neto ni en el veredicto. */
+  ingresoMensualNeto?: number
+  /** 12 o 14. Junto con ingresoMensualNeto. El colchón sigue midiéndose con el gasto del perfil. */
+  pagasAnuales?: 12 | 14
 }
 
 export type StockKind = 'accion' | 'etf' | 'fondo_indexado' | 'fondo_activo' | 'otro'
@@ -90,6 +94,16 @@ export interface StocksMetadata {
   region?: InvestRegion
   assetClass?: InvestAssetClass
   broker?: string
+  /** Títulos. Si existe, pricePerUnit es el valor partido por este número. */
+  participaciones?: number
+  precioPorParticipacion?: number
+  /** Coste fiscal por título. */
+  precioMedioCompra?: number
+  costeFiscalTotal?: number
+  /** YYYY-MM-DD. */
+  fechaCompra?: string
+  aportacionImporte?: number
+  aportacionFrecuencia?: 'mensual' | 'trimestral' | 'anual'
 }
 
 export interface CryptoMetadata {
@@ -120,6 +134,10 @@ export interface PensionMetadata {
   pensionType?: 'plan_pensiones' | 'pias' | 'ppa' | 'fondo_empleo' | 'otro'
   manager?: string         // Indexa, Finizens, Bestinver, etc.
   monthlyContribution?: number
+  /** Aportación del año. Por encima de 1.500 € el API avisa; no es un error. */
+  aportacionAnual?: number
+  aportacionImporte?: number
+  aportacionFrecuencia?: 'mensual' | 'trimestral' | 'anual'
 }
 
 export interface DebtMetadata {
@@ -127,6 +145,7 @@ export interface DebtMetadata {
   interestRate?: number    // annual % (TIN)
   monthlyPayment?: number  // monthly installment in EUR
   dueDate?: string         // estimated end date YYYY-MM-DD
+  plazoMeses?: number
 }
 
 export interface CommodityMetadata {

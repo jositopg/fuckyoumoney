@@ -67,7 +67,32 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `https://fuckyoumoney.vercel.app/api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. El token está en `~/.fuckyoumoney-db.env`, fuera del repo. GET lista las herramientas. POST acepta `{ "herramienta", "argumentos" }` o un mensaje MCP.
 
-Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `crear_posicion`. Sin `confirmar: true` solo hay vista previa. Al confirmar hace falta `clave`. No edita inmuebles `source=finca`. No devuelve email, DNI ni el token.
+Lectura: `patrimonio`, `posiciones`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+
+`fijar_detalle` acepta `posicion` y `campos`. Solo actualiza las claves enviadas (merge de `metadata` y de las notas `FYM1`, sin borrar el resto). Lista blanca: `participaciones`, `precioPorParticipacion`, `precioMedioCompra`, `costeFiscalTotal`, `fechaCompra` (`AAAA-MM-DD`), `isin` (12 caracteres y dígito de control), `aportacionImporte`, `aportacionFrecuencia` (`mensual|trimestral|anual`), `aportacionAnual`, `cuotaMensual`, `tipoInteres`, `plazoMeses`, `fechaFin`, `ingresoMensualNeto`, `pagasAnuales` (`12|14`), `institucion`, `broker`. Un campo desconocido, un negativo, una fecha imposible o un ISIN inválido es un error.
+
+`cuotaMensual` se guarda como `metadata.monthlyPayment` y, en una deuda, en `liabilities.monthly_payment`. Eso es lo que suma `getTotalMonthlyDebtPayments` y `diagnosis.cashflow.monthlyDebtPayments`. `precioMedioCompra` y `fechaCompra` usan las columnas que ya existían (`purchase_price`, `purchase_date`). `participaciones` también escribe `assets.quantity`. No hay columnas nuevas.
+
+`institucion` escribe la columna `institution` y, en un fondo, acción, cripto o pensión, el broker de la metadata. En el efectivo esa columna es el tipo de cuenta (`corriente`, `ahorro`, `remunerada`, `nomina`, `otro`): no pongas ahí el nombre del banco. Caso real: «Vanguard FTSE All world (ING)» puede quedar con institución `ING`.
+
+Si hay `participaciones`, `pricePerUnit` es el valor partido por esas participaciones. Si no las hay, el `pricePerUnit` guardado sigue siendo el valor total: no se reescriben las filas viejas. `fijar_valor` solo recalcula el precio cuando la posición ya tiene participaciones.
+
+`aportacionAnual` por encima de 1.500 € (límite general de los planes individuales) añade `avisos` en la respuesta y no rechaza la escritura.
+
+El sueldo no es una clase nueva ni un campo del perfil. Una posición `ingreso` entraría en el neto, y el colchón se mide con el gasto mensual del perfil (`monthlyExpenses`), no con la nómina. `ingresoMensualNeto` y `pagasAnuales` se guardan en la posición que se indique (la cuenta de la nómina) y no cambian el veredicto.
+
+Vista previa, no escribe:
+
+```json
+{
+  "herramienta": "fijar_detalle",
+  "argumentos": {
+    "posicion": "Vanguard FTSE All world (ING)",
+    "campos": { "participaciones": 120.5, "isin": "IE00BK5BQT80", "institucion": "ING" },
+    "confirmar": false
+  }
+}
+```
 
 ## Lectura en vivo de Finca
 
@@ -85,7 +110,9 @@ El producto sigue sincronizando solo `patrimonio_macro_snapshot()`. No copies fi
 - Autonomía (legado) = `(líquido − deudas) / gastos mensuales`. Líquido = cash + stocks + crypto.
 - Colchón de emergencia = efectivo `job=emergency` (si nadie está tagged, el efectivo no aparcado). Nunca fondos ni cripto.
 - Efectivo: una cuenta = un saldo de banco. Los usos son trozos: `emergency` (colchón) + `parked` (apartado con motivo) + resto `idle` (a fondos). `extra.slices` cuando hay más de un uso; si no, `job` en toda la cuenta. TAE no es invertirlo.
-- Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker. Sin ticker o ISIN no se identifica.
+- Inversión = `type=etf|stock` (nunca `other`). Extra: assetType, isin/ticker, region, assetClass, broker, participaciones, precioMedioCompra, costeFiscalTotal, fechaCompra, aportación. Sin ticker o ISIN no se identifica. Con participaciones, el precio por título es valor/participaciones. Sin ellas, `pricePerUnit` sigue siendo el valor total.
+- Nómina: `ingresoMensualNeto` y `pagasAnuales` (12 o 14) en la posición, no en el perfil y no como clase `ingreso`. El veredicto no los usa.
+- Deuda: `cuotaMensual` → `metadata.monthlyPayment` y `liabilities.monthly_payment`. También `tipoInteres`, `plazoMeses`, `fechaFin`.
 - Inmuebles: valor y `ttmNetCashflow` (neto 12 meses). El alquiler contratado es bruto, no caja.
 - Diagnóstico: `diagnoseWealth()` en la app y `patrimonio_ia()→diagnosis` en SQL. Mismo criterio. La app usa TypeScript; SQL es para la terminal (`npm run wealth`).
 - Foto declarada: los importes los pone Jose. No hay precios al abrir ni interés diario. Tap en una posición editable = confirmar o cambiar el número; «Editar ficha» para el resto. Cuentas: «Saldos» recorre la lista. `updatedAt` es la fecha de la foto; el efectivo con 30 días o más se marca. `fijar_valor` escribe `lastInterestUpdate` en `metadata` y en las notas `FYM1` para que un cliente viejo no vuelva a sumar el TAE.
