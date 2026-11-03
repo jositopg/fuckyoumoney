@@ -1,4 +1,5 @@
 import type { Asset } from '../types'
+import { repartoActual, type AsignacionObjetivo } from '../utils/asignacion'
 import { formatEur } from '../utils/calculations'
 import { fechaDeGasto, type GastosReales } from '../utils/gastos'
 import {
@@ -15,6 +16,7 @@ interface WealthStatusProps {
   monthlyExpenses: number
   emergencyTargetMonths?: number
   gastosReales?: GastosReales | null
+  asignacionObjetivo?: AsignacionObjetivo | null
   onAsk?: (question: DiagnosisQuestion) => void
   onMove?: (move: CapitalMove) => void
   onIdleCash?: () => void
@@ -39,6 +41,7 @@ export function WealthStatus({
   monthlyExpenses,
   emergencyTargetMonths,
   gastosReales,
+  asignacionObjetivo,
   onAsk,
   onMove,
   onIdleCash,
@@ -46,6 +49,7 @@ export function WealthStatus({
   if (assets.length === 0) return null
 
   const d = diagnoseWealth(assets, monthlyExpenses, emergencyTargetMonths, gastosReales)
+  const avisos = repartoActual(assets, asignacionObjetivo)?.avisos
   const { buckets, realEstate: re, cashflow } = d
   const hasCash = buckets.unparked + buckets.parked > 0
   const coverage =
@@ -90,7 +94,7 @@ export function WealthStatus({
         )}
       </section>
 
-      {d.mix.totalAssets > 0 && <MixPanel mix={d.mix} />}
+      {d.mix.totalAssets > 0 && <MixPanel mix={d.mix} avisos={avisos} />}
 
       {d.moves.length > 0 && (
         <section className="bg-surface-container-lowest rounded-xl p-4 shadow-soft">

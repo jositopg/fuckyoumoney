@@ -22,7 +22,7 @@ npm run wealth    # briefing JSON del patrimonio, para esta terminal
 Un cambio no está listo hasta que `npx vitest run`, lint y build salen limpios. Merge a `main` solo con build y test verdes.
 
 - Serverless: `api/sync-finca.js` (ingesta de inmuebles). No hay chat en la app.
-- SQL: `supabase/migrations/` (última `016_gastos_reales.sql`) con `~/.fuckyoumoney-db.env`.
+- SQL: `supabase/migrations/` (última `017_asignacion_objetivo.sql`) con `~/.fuckyoumoney-db.env`.
 
 ## Carpetas
 
@@ -67,7 +67,7 @@ Nunca mapear `type=real_estate` a vehicles. `institution=finca` marca origen Fin
 
 `https://fuckyoumoney.vercel.app/api/patrimonio` con `Authorization: Bearer <FYM_MCP_TOKEN>`. El token está en `~/.fuckyoumoney-db.env`, fuera del repo. GET lista las herramientas. POST acepta `{ "herramienta", "argumentos" }` o un mensaje MCP.
 
-Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`, `fijar_minusvalia`, `fijar_gastos`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
+Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fijar_detalle`, `crear_posicion`, `fijar_minusvalia`, `fijar_gastos`, `fijar_asignacion`. Sin `confirmar: true` solo hay vista previa (antes y después). Al confirmar hace falta `clave` (8–80, `[A-Za-z0-9._:-]`). La misma clave no vuelve a escribir (`repetida: true`). No edita inmuebles `source=finca`, `read_only` ni `institution=finca`. No devuelve email, DNI ni el token.
 
 `patrimonio` devuelve `gasto`: `importe` (el que usa el diagnóstico), `origen` (`real` o `manual`), `manual` (el ajuste del perfil), `actualizado`, `hasta`, `fuente`, `meses` y `caducado`. Sin gasto real, `importe` es `monthly_expenses` y el resto del briefing no cambia.
 
@@ -76,6 +76,8 @@ Lectura: `patrimonio`, `posiciones`, `evolucion`. Escritura: `fijar_valor`, `fij
 `fijar_minusvalia` guarda `{ anio, importe, compensado }` en `minusvalias_pendientes` (una fila por año; la última gana). `compensado` por defecto es 0 y no puede pasar del importe. La pérdida del año N caduca al terminar N+4. `posiciones` devuelve `minusvalias` y `avisos` de las que caducan este año y aún tienen pendiente. No se inventan pérdidas a partir de ventas.
 
 `fijar_gastos` guarda en `profiles.gastos_reales` la media que calcula el agente Banco: `{ mediaMensual, meses, fuente, hasta, actualizado }` y, si viene, `desglose` por categoría. No cambia `monthly_expenses`, no mueve saldos y no hace foto del día. `mediaMensual` es mayor que cero. `meses` es un entero de 3 a 24. `fuente` tiene de 1 a 80 caracteres. `hasta` es `AAAA-MM-DD`. `actualizado` lo pone el servidor. El diagnóstico (app y `patrimonio_ia()`) usa `mediaMensual` si `actualizado` tiene menos de 60 días; si no, vuelve el ajuste manual. No se inventa un gasto a partir de movimientos que no se hayan apuntado.
+
+`fijar_asignacion` guarda en `profiles.asignacion_objetivo` `{ inmuebles, bolsa, liquidez, tolerancia }`. Los tres porcentajes son enteros de 0 a 100 y suman 100. `tolerancia` es un entero de 0 a 100; si no se envía, queda en 5. No cambia gastos, saldos ni la foto del día. `patrimonio` añade `asignacion` (porcentaje, puntos, euros y `avisos`) solo si hay un objetivo válido. Una clase avisa cuando la desviación en puntos es mayor que la tolerancia; en el límite no avisa. Sin objetivo, o si el JSON no es válido, no hay aviso y la lectura no añade el campo. Inmuebles incluye los de Finca. Bolsa es `etf` y `stock` (en la app, `stocks`). Liquidez es el efectivo entero, también el apartado. Cripto, pensión y el resto cuentan en el total y no tienen objetivo propio. La deuda queda fuera de la base. No se inventa un objetivo.
 
 `evolucion` no escribe. `posicion` es opcional (nombre o id, también un inmueble de Finca). Sin ella la serie es el neto. `desde` y `hasta` son `AAAA-MM-DD`. La respuesta trae `serie` y `variacion` (`1d`, `30d`, `ytd`, `12m`), cada una con `porcentaje`, `base`, `actual` y `desde`.
 
@@ -151,3 +153,4 @@ La app ya está en producción. Tras cada commit: `git push` sin preguntar.
 - La foto diaria no se toma cuando Finca sincroniza un inmueble, ni en la migración local de un usuario que aún no tiene filas. Entra con el backfill de hoy o en el siguiente guardado desde la app.
 - La plusvalía latente no sale de un precio de compra guardado como valor total, ni de una venta que no se haya anotado. Las minusvalías pendientes solo existen si se apuntan con `fijar_minusvalia`.
 - El gasto real solo existe si se apunta con `fijar_gastos`. A los 60 días deja de usarse y queda el ajuste manual de Ajustes. El desglose no entra en el colchón: solo la media.
+- El aviso de asignación solo existe si se guarda un objetivo con `fijar_asignacion`. Sin objetivo no hay aviso y `patrimonio` no añade el campo. No se inventa un objetivo. Inmuebles incluye los de Finca. Bolsa es fondos y acciones. Liquidez es el efectivo entero. La deuda no entra en la base. En el límite de la tolerancia no avisa.

@@ -56,10 +56,12 @@ const banco = vi.hoisted(() => {
   const positionSnapshots: Fila[] = []
   const fotos: Fila[] = []
   const minusvalias: Fila[] = []
-  const perfil: { monthly_expenses: number; gastos_reales: unknown } = {
+  const perfil: { monthly_expenses: number; gastos_reales: unknown; asignacion_objetivo: unknown } = {
     monthly_expenses: 2000,
     gastos_reales: null,
+    asignacion_objetivo: null,
   }
+  const posicionesLectura: Fila[] = []
   const escritos = new Map<string, { resultado: unknown }>()
   const ops: Operacion[] = []
   const sql: string[] = []
@@ -70,6 +72,7 @@ const banco = vi.hoisted(() => {
     fotos: Fila[]
     minusvalias: Fila[]
     gastos_reales: unknown
+    asignacion_objetivo: unknown
   } | null = null
 
   function diaMadrid(ahora = new Date()): string {
@@ -338,6 +341,7 @@ const banco = vi.hoisted(() => {
         fotos: clonar(fotos),
         minusvalias: clonar(minusvalias),
         gastos_reales: clonar(perfil.gastos_reales),
+        asignacion_objetivo: clonar(perfil.asignacion_objetivo),
       }
       return { rows: [], rowCount: 0 }
     }
@@ -354,21 +358,32 @@ const banco = vi.hoisted(() => {
         fotos.splice(0, fotos.length, ...foto.fotos)
         minusvalias.splice(0, minusvalias.length, ...foto.minusvalias)
         perfil.gastos_reales = foto.gastos_reales
+        perfil.asignacion_objetivo = foto.asignacion_objetivo
         foto = null
       }
       return { rows: [], rowCount: 0 }
     }
     if (norm.startsWith('create table')) return { rows: [], rowCount: 0 }
     if (norm.includes('patrimonio_ia')) {
-      return { rows: [{ snap: { monthlyExpenses: perfil.monthly_expenses, currency: 'EUR' } }], rowCount: 1 }
+      const snap: Fila = { monthlyExpenses: perfil.monthly_expenses, currency: 'EUR' }
+      if (posicionesLectura.length > 0) snap.positions = clonar(posicionesLectura)
+      return { rows: [{ snap }], rowCount: 1 }
     }
-    if (norm.startsWith('update profiles')) {
+    if (norm.startsWith('update profiles') && norm.includes('asignacion_objetivo')) {
+      perfil.asignacion_objetivo = typeof params[1] === 'string' ? JSON.parse(params[1]) : params[1]
+      return { rows: [], rowCount: 1 }
+    }
+    if (norm.startsWith('update profiles') && norm.includes('gastos_reales')) {
       perfil.gastos_reales = typeof params[1] === 'string' ? JSON.parse(params[1]) : params[1]
       return { rows: [], rowCount: 1 }
     }
     if (norm.includes('from profiles') && norm.includes('gastos_reales')) {
       return {
-        rows: [{ monthly_expenses: perfil.monthly_expenses, gastos_reales: perfil.gastos_reales }],
+        rows: [{
+          monthly_expenses: perfil.monthly_expenses,
+          gastos_reales: perfil.gastos_reales,
+          asignacion_objetivo: perfil.asignacion_objetivo,
+        }],
         rowCount: 1,
       }
     }
@@ -479,6 +494,8 @@ const banco = vi.hoisted(() => {
     minusvalias.splice(0, minusvalias.length)
     perfil.monthly_expenses = 2000
     perfil.gastos_reales = null
+    perfil.asignacion_objetivo = null
+    posicionesLectura.splice(0, posicionesLectura.length)
     escritos.clear()
     ops.splice(0, ops.length)
     sql.splice(0, sql.length)
@@ -503,6 +520,7 @@ const banco = vi.hoisted(() => {
     fotos,
     minusvalias,
     perfil,
+    posicionesLectura,
     ops,
     sql,
     supabase,
@@ -576,6 +594,8 @@ interface CuerpoPatrimonio {
   gastosReales?: { mediaMensual?: number }
   gasto?: { importe?: number; origen?: string; manual?: number; caducado?: boolean }
   monthlyExpenses?: number
+  asignacionObjetivo?: { inmuebles?: number; tolerancia?: number }
+  asignacion?: { avisos?: string[] }
 }
 
 function crearRespuesta(): RespuestaHttp {
@@ -1102,6 +1122,7 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(manual.codigo).toBe(200)
     expect(manual.cuerpo.gasto).toMatchObject({ importe: 2000, origen: 'manual', manual: 2000, caducado: false })
     expect(manual.cuerpo.monthlyExpenses).toBe(2000)
+    expect(manual.cuerpo.asignacion).toBeUndefined()
 
     banco.perfil.gastos_reales = {
       mediaMensual: 1800,
@@ -1113,6 +1134,86 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     const real = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
     expect(real.codigo).toBe(200)
     expect(real.cuerpo.gasto).toMatchObject({ importe: 1800, origen: 'real', manual: 2000, caducado: false })
+    expect(real.cuerpo.asignacion).toBeUndefined()
+    expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
+    expect(banco.sql.some(texto => texto.startsWith('update profiles'))).toBe(false)
+  })
+
+  it('fijar_asignacion con la misma clave no se apunta dos veces y no toca saldos', async () => {
+    sembrarCuenta(100, NUBE)
+    const fotosAntes = banco.fotos.length
+    const previa = await postPatrimonio({
+      herramienta: 'fijar_asignacion',
+      argumentos: { inmuebles: 50, bolsa: 30, liquidez: 20, confirmar: false },
+    })
+    expect(previa.codigo).toBe(200)
+    expect(previa.cuerpo.vistaPrevia).toBe(true)
+    expect(previa.cuerpo.asignacionObjetivo).toMatchObject({ inmuebles: 50, bolsa: 30, liquidez: 20, tolerancia: 5 })
+    expect(banco.perfil.asignacion_objetivo).toBeNull()
+    expect(banco.sql.some(texto => texto.startsWith('update profiles'))).toBe(false)
+    expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
+
+    const primera = await postPatrimonio({
+      herramienta: 'fijar_asignacion',
+      argumentos: { inmuebles: 50, bolsa: 30, liquidez: '20', confirmar: true, clave: 'asig-perfil-01' },
+    })
+    expect(primera.codigo).toBe(200)
+    expect(primera.cuerpo.escrito).toBe(true)
+    expect(primera.cuerpo.repetida).toBe(false)
+    expect(banco.perfil.asignacion_objetivo).toMatchObject({
+      inmuebles: 50,
+      bolsa: 30,
+      liquidez: 20,
+      tolerancia: 5,
+    })
+    expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(100)
+    expect(banco.fotos).toHaveLength(fotosAntes)
+    expect(banco.perfil.gastos_reales).toBeNull()
+
+    const updates = banco.sql.filter(texto => texto.includes('asignacion_objetivo')).length
+    const segunda = await postPatrimonio({
+      herramienta: 'fijar_asignacion',
+      argumentos: { inmuebles: 10, bolsa: 10, liquidez: 80, confirmar: true, clave: 'asig-perfil-01' },
+    })
+    expect(segunda.codigo).toBe(200)
+    expect(segunda.cuerpo.repetida).toBe(true)
+    expect(segunda.cuerpo.asignacionObjetivo?.inmuebles).toBe(50)
+    expect(banco.sql.filter(texto => texto.includes('asignacion_objetivo')).length).toBe(updates)
+    expect(banco.perfil.asignacion_objetivo).toMatchObject({ inmuebles: 50, tolerancia: 5 })
+
+    const mala = await postPatrimonio({
+      herramienta: 'fijar_asignacion',
+      argumentos: { inmuebles: 40, bolsa: 30, liquidez: 20, confirmar: true, clave: 'asig-perfil-02' },
+    })
+    expect(mala.codigo).toBe(400)
+    expect(banco.perfil.asignacion_objetivo).toMatchObject({ inmuebles: 50 })
+    expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
+  })
+
+  it('patrimonio avisa la asignación solo si hay objetivo', async () => {
+    banco.posicionesLectura.push(
+      { class: 'real_estate', kind: 'asset', value: 60, source: 'finca' },
+      { class: 'etf', kind: 'asset', value: 30 },
+      { class: 'cash', kind: 'asset', value: 10 },
+    )
+    const sinObjetivo = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(sinObjetivo.codigo).toBe(200)
+    expect(sinObjetivo.cuerpo.asignacion).toBeUndefined()
+
+    banco.perfil.asignacion_objetivo = { inmuebles: 50, bolsa: 30, liquidez: 20, tolerancia: 5 }
+    const fuera = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(fuera.cuerpo.asignacion?.avisos).toEqual([
+      'Inmuebles está 10 puntos por encima del objetivo (10,00 € para volver).',
+      'Liquidez está 10 puntos por debajo del objetivo (10,00 € para volver).',
+    ])
+
+    banco.posicionesLectura.splice(0, banco.posicionesLectura.length,
+      { class: 'real_estate', kind: 'asset', value: 55, source: 'finca' },
+      { class: 'stock', kind: 'asset', value: 25 },
+      { class: 'cash', kind: 'asset', value: 20 },
+    )
+    const limite = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(limite.cuerpo.asignacion?.avisos).toEqual([])
     expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
     expect(banco.sql.some(texto => texto.startsWith('update profiles'))).toBe(false)
   })

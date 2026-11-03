@@ -35,6 +35,7 @@ export interface Database {
           monthly_expenses: number | null
           emergency_target_months: number | null
           gastos_reales: Json | null
+          asignacion_objetivo: Json | null
         }
         Insert: {
           id: string
@@ -44,6 +45,7 @@ export interface Database {
           monthly_expenses?: number | null
           emergency_target_months?: number | null
           gastos_reales?: Json | null
+          asignacion_objetivo?: Json | null
         }
         Update: {
           id?: string
@@ -53,6 +55,7 @@ export interface Database {
           monthly_expenses?: number | null
           emergency_target_months?: number | null
           gastos_reales?: Json | null
+          asignacion_objetivo?: Json | null
         }
         Relationships: []
       }

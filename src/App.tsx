@@ -93,6 +93,7 @@ export default function App() {
           monthlyExpenses: number | null
           emergencyTargetMonths: number | null
           gastosReales?: AppData['gastosReales']
+          asignacionObjetivo?: AppData['asignacionObjetivo']
         } = {
           monthlyExpenses: null,
           emergencyTargetMonths: null,
@@ -129,6 +130,9 @@ export default function App() {
               ? { emergencyTargetMonths: cloudSettings.emergencyTargetMonths }
               : {}),
             ...(cloudSettings.gastosReales !== undefined ? { gastosReales: cloudSettings.gastosReales } : {}),
+            ...(cloudSettings.asignacionObjetivo !== undefined
+              ? { asignacionObjetivo: cloudSettings.asignacionObjetivo }
+              : {}),
           }
         })
         setCloudReady(true)
@@ -403,6 +407,7 @@ export default function App() {
             monthlyExpenses={data.monthlyExpenses}
             emergencyTargetMonths={data.emergencyTargetMonths}
             gastosReales={data.gastosReales}
+            asignacionObjetivo={data.asignacionObjetivo}
             onAsk={q => {
               if (q.id === 'expenses' || q.id === 'emergency_target') {
                 setIsSettingsOpen(true)

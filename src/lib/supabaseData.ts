@@ -1,4 +1,5 @@
 import type { Asset } from '../types'
+import { objetivoValido, type AsignacionObjetivo } from '../utils/asignacion'
 import { fechaMadrid } from '../../lib/evolucion.js'
 import { supabase } from './supabase'
 import {
@@ -349,6 +350,8 @@ export interface ProfileSettings {
   emergencyTargetMonths: number | null
   /** undefined: la lectura falló y no hay que pisar el valor local. null: no hay gasto real. */
   gastosReales?: import('../utils/gastos').GastosReales | null
+  /** undefined: la lectura falló y no hay que pisar el valor local. null: no hay objetivo. */
+  asignacionObjetivo?: AsignacionObjetivo | null
 }
 
 function gastosDesdeFila(raw: unknown): import('../utils/gastos').GastosReales | null {
@@ -383,10 +386,12 @@ export async function getProfileMonthlyExpenses(userId: string): Promise<number 
 }
 
 export async function getProfileSettings(userId: string): Promise<ProfileSettings> {
-  if (!supabase) return { monthlyExpenses: null, emergencyTargetMonths: null, gastosReales: null }
+  if (!supabase) {
+    return { monthlyExpenses: null, emergencyTargetMonths: null, gastosReales: null, asignacionObjetivo: null }
+  }
   const { data, error } = await supabase
     .from('profiles')
-    .select('monthly_expenses, emergency_target_months, gastos_reales')
+    .select('monthly_expenses, emergency_target_months, gastos_reales, asignacion_objetivo')
     .eq('id', userId)
     .maybeSingle()
   if (error) {
@@ -397,12 +402,14 @@ export async function getProfileSettings(userId: string): Promise<ProfileSetting
     monthly_expenses?: number | null
     emergency_target_months?: number | null
     gastos_reales?: unknown
+    asignacion_objetivo?: unknown
   } | null
   return {
     monthlyExpenses: row?.monthly_expenses != null ? Number(row.monthly_expenses) : null,
     emergencyTargetMonths:
       row?.emergency_target_months != null ? Number(row.emergency_target_months) : null,
     gastosReales: gastosDesdeFila(row?.gastos_reales),
+    asignacionObjetivo: objetivoValido(row?.asignacion_objetivo),
   }
 }
 

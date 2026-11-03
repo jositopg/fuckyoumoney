@@ -213,6 +213,8 @@ export interface AppData {
   emergencyTargetMonths?: number
   /** Gasto real del perfil. null: no hay. Ausente: esta sesión aún no lo ha leído. */
   gastosReales?: import('./utils/gastos').GastosReales | null
+  /** Reparto objetivo. null: no hay. Ausente: esta sesión aún no lo ha leído. */
+  asignacionObjetivo?: import('./utils/asignacion').AsignacionObjetivo | null
   lastPriceUpdate?: string
   snapshots?: WealthSnapshot[]
   lastExportReminder?: string // ISO date — last time we showed the export reminder
