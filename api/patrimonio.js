@@ -619,8 +619,17 @@ async function ejecutar(cliente, userId, nombre, args) {
       ...snap,
       gasto: gastoEfectivo(manual, perfil.rows[0]?.gastos_reales ?? null, new Date().toISOString()),
     }
+    const posiciones = await posicionesDe(cliente, userId)
+    const fichas = posiciones.map(fichaPublica)
+    cuerpo.plusvalias = fichas
+      .filter((f) => f.plusvalia)
+      .map((f) => ({ id: f.id, nombre: f.nombre, ...f.plusvalia }))
+    cuerpo.plusvaliaTotal = totalPlusvalias(fichas)
     const asignacion = repartoActual(snap.positions, perfil.rows[0]?.asignacion_objetivo ?? null)
     if (asignacion) cuerpo.asignacion = asignacion
+    else {
+      cuerpo.asignacion = { objetivo: null, aviso: 'No hay asignación guardada. Usa fijar_asignacion.' }
+    }
     return cuerpo
   }
   if (nombre === 'posiciones') {
@@ -696,7 +705,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. patrimonio dice el gasto mensual usado y si sale del ajuste manual o del gasto real. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion, fijar_minusvalia y fijar_gastos no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. fijar_gastos guarda la media del agente Banco y no toca saldos. fijar_asignacion guarda el reparto objetivo y no toca saldos. editar_registro y borrar_registro corrigen o borran una fila que ya existe. Sin confirmar:true no escriben: la vista previa enseña el antes y el después. Al confirmar hace falta clave. No cambian id, user_id ni created_at. Una fila de Finca se puede corregir con esas dos y la vista previa avisa de que el sync puede volver a escribirla. Las demás herramientas no editan los inmuebles de Finca.',
+              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. patrimonio dice el gasto mensual usado y si sale del ajuste manual o del gasto real, incluye la plusvalía latente por posición y el total, y siempre devuelve la asignación (si no hay objetivo, avisa de usar fijar_asignacion). posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion, fijar_minusvalia y fijar_gastos no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. fijar_gastos guarda la media del agente Banco y no toca saldos. fijar_asignacion guarda el reparto objetivo y no toca saldos. editar_registro y borrar_registro corrigen o borran una fila que ya existe. Sin confirmar:true no escriben: la vista previa enseña el antes y el después. Al confirmar hace falta clave. No cambian id, user_id ni created_at. Una fila de Finca se puede corregir con esas dos y la vista previa avisa de que el sync puede volver a escribirla. Las demás herramientas no editan los inmuebles de Finca.',
           },
         }
       }

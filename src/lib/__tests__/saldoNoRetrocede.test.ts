@@ -595,7 +595,9 @@ interface CuerpoPatrimonio {
   gasto?: { importe?: number; origen?: string; manual?: number; caducado?: boolean }
   monthlyExpenses?: number
   asignacionObjetivo?: { inmuebles?: number; tolerancia?: number }
-  asignacion?: { avisos?: string[] }
+  asignacion?: { objetivo?: unknown; aviso?: string; avisos?: string[] }
+  plusvalias?: { id: string; nombre: string; euros: number; porcentaje: number; coste: number }[]
+  plusvaliaTotal?: { euros: number; porcentaje: number; coste: number } | null
 }
 
 function crearRespuesta(): RespuestaHttp {
@@ -1117,12 +1119,43 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     expect(banco.fila('assets', banco.CUENTA).manual_value).toBe(100)
   })
 
+  it('patrimonio devuelve la plusvalía de una posición con participaciones y precio medio', async () => {
+    banco.assets.push(
+      filaBase({
+        id: banco.FONDO,
+        name: 'Fondo con coste',
+        type: 'etf',
+        manual_value: 1500,
+        quantity: 10,
+        metadata: { participaciones: 10, precioMedioCompra: 100 },
+      }),
+    )
+    const lectura = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(lectura.codigo).toBe(200)
+    expect(lectura.cuerpo.plusvalias).toEqual([
+      { id: banco.FONDO, nombre: 'Fondo con coste', euros: 500, porcentaje: 50, coste: 1000 },
+    ])
+    expect(lectura.cuerpo.plusvaliaTotal).toEqual({ euros: 500, porcentaje: 50, coste: 1000 })
+  })
+
+  it('patrimonio sin objetivo devuelve el aviso de asignación', async () => {
+    const lectura = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
+    expect(lectura.codigo).toBe(200)
+    expect(lectura.cuerpo.asignacion).toEqual({
+      objetivo: null,
+      aviso: 'No hay asignación guardada. Usa fijar_asignacion.',
+    })
+  })
+
   it('patrimonio dice el gasto usado y, sin dato real, el manual', async () => {
     const manual = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
     expect(manual.codigo).toBe(200)
     expect(manual.cuerpo.gasto).toMatchObject({ importe: 2000, origen: 'manual', manual: 2000, caducado: false })
     expect(manual.cuerpo.monthlyExpenses).toBe(2000)
-    expect(manual.cuerpo.asignacion).toBeUndefined()
+    expect(manual.cuerpo.asignacion).toEqual({
+      objetivo: null,
+      aviso: 'No hay asignación guardada. Usa fijar_asignacion.',
+    })
 
     banco.perfil.gastos_reales = {
       mediaMensual: 1800,
@@ -1134,7 +1167,10 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     const real = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
     expect(real.codigo).toBe(200)
     expect(real.cuerpo.gasto).toMatchObject({ importe: 1800, origen: 'real', manual: 2000, caducado: false })
-    expect(real.cuerpo.asignacion).toBeUndefined()
+    expect(real.cuerpo.asignacion).toEqual({
+      objetivo: null,
+      aviso: 'No hay asignación guardada. Usa fijar_asignacion.',
+    })
     expect(banco.sql.some(texto => texto.startsWith('update assets'))).toBe(false)
     expect(banco.sql.some(texto => texto.startsWith('update profiles'))).toBe(false)
   })
@@ -1198,7 +1234,10 @@ describe('un saldo guardado no vuelve a un valor viejo', () => {
     )
     const sinObjetivo = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
     expect(sinObjetivo.codigo).toBe(200)
-    expect(sinObjetivo.cuerpo.asignacion).toBeUndefined()
+    expect(sinObjetivo.cuerpo.asignacion).toEqual({
+      objetivo: null,
+      aviso: 'No hay asignación guardada. Usa fijar_asignacion.',
+    })
 
     banco.perfil.asignacion_objetivo = { inmuebles: 50, bolsa: 30, liquidez: 20, tolerancia: 5 }
     const fuera = await postPatrimonio({ herramienta: 'patrimonio', argumentos: {} })
