@@ -84,13 +84,13 @@ async function leerCuerpo(req) {
 const SQL_POSICIONES = `
 select a.id, a.user_id, a.name, a.type::text as clase, 'asset'::text as kind,
        coalesce(nullif(a.manual_value, 0), a.quantity * coalesce(a.purchase_price, 0), 0) as valor,
-       a.source, a.institution, a.read_only, a.metadata, a.notes, a.quantity,
+       a.source, a.institution, a.read_only, a.is_liquid, a.metadata, a.notes, a.quantity,
        null::numeric as monthly_payment, null::numeric as interest_rate, null::date as end_date,
        a.purchase_date, a.purchase_price
 from assets a
 union all
 select l.id, l.user_id, l.name, l.type::text, 'liability'::text,
-       l.balance, l.source, l.institution, false, coalesce(l.metadata, '{}'::jsonb), l.notes, null::numeric,
+       l.balance, l.source, l.institution, false, false, coalesce(l.metadata, '{}'::jsonb), l.notes, null::numeric,
        l.monthly_payment, l.interest_rate, l.end_date, null::date, null::numeric
 from liabilities l
 `
@@ -116,6 +116,7 @@ function trozosDe(fila) {
     source: fila.source,
     institucion: fila.institution,
     readOnly: fila.read_only === true || fila.institution === 'finca' || fila.source === 'finca',
+    liquida: fila.is_liquid === true,
     slices: Array.isArray(slices) ? slices : undefined,
     quantity: Number.isFinite(quantity) ? quantity : undefined,
     metadata: meta,
@@ -472,6 +473,7 @@ async function escribirDetalle(cliente, userId, posiciones, orden) {
   const notes = notasConParche(notasDe(posiciones, orden.id), orden.notas)
   const c = orden.columnas
   if (orden.kind === 'liability') {
+    if (c.isLiquid != null) throw new PatrimonioError('"liquida" no vale en una deuda.')
     const hecho = await cliente.query(
       `update liabilities
           set metadata = coalesce(metadata, '{}'::jsonb) || $1::jsonb,
@@ -510,8 +512,9 @@ async function escribirDetalle(cliente, userId, posiciones, orden) {
             quantity = case when $5::boolean then $6::numeric else quantity end,
             purchase_price = case when $7::boolean then $8::numeric else purchase_price end,
             purchase_date = case when $9::boolean then $10::date else purchase_date end,
+            is_liquid = case when $11::boolean then $12::boolean else is_liquid end,
             updated_at = now()
-      where id = $11 and user_id = $12
+      where id = $13 and user_id = $14
         and coalesce(source, '') <> 'finca'
         and read_only is not true
         and coalesce(institution, '') <> 'finca'`,
@@ -526,6 +529,8 @@ async function escribirDetalle(cliente, userId, posiciones, orden) {
       c.purchasePrice ?? null,
       c.purchaseDate != null,
       c.purchaseDate ?? null,
+      c.isLiquid != null,
+      c.isLiquid ?? null,
       orden.id,
       userId,
     ],
