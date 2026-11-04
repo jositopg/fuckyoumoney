@@ -9,12 +9,14 @@ import { gastoEfectivo } from '../lib/gastos.js'
 import { resumenMinusvalias, totalPlusvalias } from '../lib/plusvalias.js'
 import {
   PatrimonioError,
+  esCorreccion,
   esEscritura,
   fichaDe,
   herramientas,
   notasConInteres,
   notasConParche,
   participacionesDe,
+  pedidoCorreccion,
   planEvolucion,
   planificar,
   precioUnitario,
@@ -163,7 +165,187 @@ const CREAR_TABLA = `create table if not exists agente_escrituras (
   creado_en timestamptz not null default now()
 )`
 
+const COLUMNAS_BLOQUEADAS = new Set(['id', 'user_id', 'created_at'])
+const IDENTIFICADOR = /^[a-z_][a-z0-9_]*$/
+
+function citar(nombre) {
+  if (!IDENTIFICADOR.test(nombre)) throw new PatrimonioError(`"${nombre}" no es un nombre válido.`)
+  return `"${nombre}"`
+}
+
+async function columnasEditables(cliente, tabla) {
+  const leidas = await cliente.query(
+    `select column_name, udt_name from information_schema.columns where table_schema = 'public' and table_name = $1`,
+    [tabla],
+  )
+  if (leidas.rows.length === 0) throw new PatrimonioError(`No se encuentra la tabla "${tabla}".`)
+  const mapa = new Map()
+  for (const fila of leidas.rows) {
+    const columna = typeof fila.column_name === 'string' ? fila.column_name : ''
+    if (!IDENTIFICADOR.test(columna) || COLUMNAS_BLOQUEADAS.has(columna)) continue
+    mapa.set(columna, typeof fila.udt_name === 'string' ? fila.udt_name : '')
+  }
+  return mapa
+}
+
+function exigirCampos(tabla, campos, columnas) {
+  for (const columna of Object.keys(campos)) {
+    if (COLUMNAS_BLOQUEADAS.has(columna)) throw new PatrimonioError(`No se puede cambiar "${columna}".`)
+    if (!columnas.has(columna)) throw new PatrimonioError(`"${columna}" no es una columna de ${tabla}.`)
+  }
+}
+
+// minusvalias_pendientes y position_snapshots no tienen columna id.
+// El id del pedido es el año, o position_id|fecha. El resto filtra por id y user_id.
+function filtroDe(tabla, id, userId) {
+  if (tabla === 'profiles') {
+    if (id !== userId) throw new PatrimonioError('Esa fila no es de este perfil.')
+    return { where: 'where "id" = $1', params: [userId] }
+  }
+  if (tabla === 'minusvalias_pendientes') {
+    if (!/^\d{4}$/.test(id)) throw new PatrimonioError('En minusvalias_pendientes el id es el año.')
+    return { where: 'where "user_id" = $1 and "anio" = $2::int', params: [userId, id] }
+  }
+  if (tabla === 'position_snapshots') {
+    const corte = id.indexOf('|')
+    const positionId = corte === -1 ? '' : id.slice(0, corte)
+    const fecha = corte === -1 ? '' : id.slice(corte + 1)
+    if (!positionId || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new PatrimonioError('En position_snapshots el id es position_id|fecha, con la fecha en AAAA-MM-DD.')
+    }
+    return {
+      where: 'where "user_id" = $1 and "position_id" = $2 and "fecha" = $3::date',
+      params: [userId, positionId, fecha],
+    }
+  }
+  return { where: 'where "id" = $1 and "user_id" = $2', params: [id, userId] }
+}
+
+function desplazar(filtro, desde) {
+  let n = desde
+  const where = filtro.where.replace(/\$\d+/g, () => `$${n++}`)
+  return { where, params: filtro.params }
+}
+
+function valorDe(valor, udt) {
+  const json = udt === 'json' || udt === 'jsonb'
+  if (valor !== null && typeof valor === 'object') {
+    return { valor: JSON.stringify(valor), cast: json ? `::${udt}` : '' }
+  }
+  return { valor, cast: json ? `::${udt}` : '' }
+}
+
+function avisoDeFinca(fila) {
+  if (fila.read_only === true || fila.source === 'finca' || fila.institution === 'finca') {
+    return 'Esta fila viene de Finca. El sync puede volver a escribirla.'
+  }
+  return undefined
+}
+
+function conAviso(fila, comun) {
+  const aviso = avisoDeFinca(fila)
+  return aviso ? { ...comun, aviso } : comun
+}
+
+async function leerFila(cliente, tabla, id, filtro) {
+  const leida = await cliente.query(`select * from ${citar(tabla)} ${filtro.where}`, filtro.params)
+  const fila = leida.rows[0]
+  if (!fila) throw new PatrimonioError(`No hay ninguna fila con id "${id}" en ${tabla}.`)
+  return fila
+}
+
+function cambiosDe(pedido, columnas, fila, filtro) {
+  const sets = []
+  const params = []
+  const antes = {}
+  const despues = {}
+  for (const [columna, valor] of Object.entries(pedido.campos)) {
+    if (valor === undefined) throw new PatrimonioError(`Falta el valor de "${columna}".`)
+    const udt = columnas.get(columna)
+    if (udt === undefined || !IDENTIFICADOR.test(columna)) {
+      throw new PatrimonioError(`"${columna}" no es una columna de ${pedido.tabla}.`)
+    }
+    const preparado = valorDe(valor, udt)
+    params.push(preparado.valor)
+    sets.push(`${citar(columna)} = $${params.length}${preparado.cast}`)
+    antes[columna] = fila[columna] ?? null
+    despues[columna] = valor
+  }
+  const donde = desplazar(filtro, params.length + 1)
+  params.push(...donde.params)
+  return {
+    sql: `update ${citar(pedido.tabla)} set ${sets.join(', ')} ${donde.where}`,
+    params,
+    antes,
+    despues,
+  }
+}
+
+function ordenDeCorreccion(pedido, columnas, fila, filtro) {
+  if (pedido.herramienta === 'borrar_registro') {
+    const comun = conAviso(fila, { tabla: pedido.tabla, id: pedido.id, antes: { ...fila }, despues: null })
+    return {
+      vista: { escrito: false, vistaPrevia: true, ...comun },
+      resultado: { escrito: true, repetida: false, ...comun },
+      sql: `delete from ${citar(pedido.tabla)} ${filtro.where}`,
+      params: [...filtro.params],
+    }
+  }
+  const cambio = cambiosDe(pedido, columnas, fila, filtro)
+  const comun = conAviso(fila, {
+    tabla: pedido.tabla,
+    id: pedido.id,
+    antes: cambio.antes,
+    despues: cambio.despues,
+  })
+  return {
+    vista: { escrito: false, vistaPrevia: true, ...comun },
+    resultado: { escrito: true, repetida: false, ...comun },
+    sql: cambio.sql,
+    params: cambio.params,
+  }
+}
+
+async function aplicarCorreccion(cliente, userId, nombre, args) {
+  const pedido = pedidoCorreccion(nombre, args)
+  if (pedido.confirmar && pedido.clave) {
+    await cliente.query(CREAR_TABLA)
+    const previa = await cliente.query('select resultado from agente_escrituras where clave = $1', [pedido.clave])
+    const guardada = previa.rows[0]?.resultado
+    if (guardada && typeof guardada === 'object') return { ...guardada, repetida: true }
+  }
+  const columnas = await columnasEditables(cliente, pedido.tabla)
+  if (pedido.herramienta === 'editar_registro') exigirCampos(pedido.tabla, pedido.campos, columnas)
+  const filtro = filtroDe(pedido.tabla, pedido.id, userId)
+  const fila = await leerFila(cliente, pedido.tabla, pedido.id, filtro)
+  const orden = ordenDeCorreccion(pedido, columnas, fila, filtro)
+  if (!pedido.confirmar) return orden.vista
+  await cliente.query('begin')
+  try {
+    await cliente.query(CREAR_TABLA)
+    const previa = await cliente.query('select resultado from agente_escrituras where clave = $1', [pedido.clave])
+    const guardada = previa.rows[0]?.resultado
+    if (guardada && typeof guardada === 'object') {
+      await cliente.query('commit')
+      return { ...guardada, repetida: true }
+    }
+    const hecha = await cliente.query(orden.sql, orden.params)
+    if ((hecha.rowCount ?? 0) === 0) throw new PatrimonioError('Esa fila ya no existe.')
+    await cliente.query('insert into agente_escrituras (clave, herramienta, resultado) values ($1,$2,$3::jsonb)', [
+      pedido.clave,
+      pedido.herramienta,
+      JSON.stringify(orden.resultado),
+    ])
+    await cliente.query('commit')
+    return orden.resultado
+  } catch (err) {
+    await cliente.query('rollback')
+    throw err
+  }
+}
+
 async function aplicar(cliente, userId, nombre, args) {
+  if (esCorreccion(nombre)) return aplicarCorreccion(cliente, userId, nombre, args)
   const posiciones = await posicionesDe(cliente, userId)
   const orden = planificar(nombre, args, posiciones)
   const sinConfirmar = responderEscritura(orden, null)
@@ -514,7 +696,7 @@ export default async function handler(req, res) {
             capabilities: { tools: {} },
             serverInfo: { name: 'fuckyoumoney', version: '0.1.0' },
             instructions:
-              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. patrimonio dice el gasto mensual usado y si sale del ajuste manual o del gasto real. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion, fijar_minusvalia y fijar_gastos no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. fijar_gastos guarda la media del agente Banco y no toca saldos. fijar_asignacion guarda el reparto objetivo y no toca saldos. Los inmuebles de Finca no se editan aquí.',
+              'Patrimonio declarado de Jose. patrimonio, posiciones y evolucion leen. patrimonio dice el gasto mensual usado y si sale del ajuste manual o del gasto real. posiciones incluye la plusvalía latente por posición y el total. evolucion devuelve la serie diaria y el porcentaje, y no escribe. fijar_valor, fijar_detalle, crear_posicion, fijar_minusvalia y fijar_gastos no guardan nada sin confirmar:true y una clave. fijar_detalle solo cambia los campos enviados. fijar_minusvalia apunta la pérdida de un año. fijar_gastos guarda la media del agente Banco y no toca saldos. fijar_asignacion guarda el reparto objetivo y no toca saldos. editar_registro y borrar_registro corrigen o borran una fila que ya existe. Sin confirmar:true no escriben: la vista previa enseña el antes y el después. Al confirmar hace falta clave. No cambian id, user_id ni created_at. Una fila de Finca se puede corregir con esas dos y la vista previa avisa de que el sync puede volver a escribirla. Las demás herramientas no editan los inmuebles de Finca.',
           },
         }
       }
